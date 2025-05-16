@@ -2,6 +2,7 @@ import streamlit as st
 import folium
 from streamlit_folium import folium_static
 import plotly.graph_objects as go
+import time
 
 # Configuración de la página
 st.set_page_config(
@@ -41,6 +42,11 @@ with st.container():
     # Línea separadora
     st.markdown("---")
 
+# Crear directorio para almacenar imágenes si no existe
+import os
+if not os.path.exists('uploads'):
+    os.makedirs('uploads')
+
 # Inicializar el DataFrame en la sesión si no existe
 if 'df' not in st.session_state:
     st.session_state.df = pd.DataFrame(columns=[
@@ -48,8 +54,11 @@ if 'df' not in st.session_state:
         'Destino SII', 'Destino según Terreno', 'Destino DOM',
         'N° en Terreno', 'Coordenadas', 'Fiscalizada DOM', 'M2 Terreno',
         'M2 Construidos', 'Línea de Construcción',
-        'Año de Construcción', 'Expediente DOM', 'Observaciones'
+        'Año de Construcción', 'Expediente DOM', 'Observaciones',
+        'Fotos'  # Lista de rutas de fotos
     ])
+    # Inicializar la columna de fotos como lista vacía para todas las filas
+    st.session_state.df['Fotos'] = st.session_state.df['Fotos'].apply(lambda x: [] if pd.isna(x) else x)
 
 # Menú lateral con estilo
 with st.sidebar:
@@ -58,11 +67,12 @@ with st.sidebar:
     
     opcion = st.selectbox(
         "",
-        ["Agregar Propiedad", "Ver/Editar Propiedades", "Buscar Propiedades", "Exportar Datos"],
+        ["Agregar Propiedad", "Ver/Editar Propiedades", "Buscar Propiedades", "Gestionar Fotos", "Exportar Datos"],
         format_func=lambda x: {
             "Agregar Propiedad": "📝 Agregar Propiedad",
             "Ver/Editar Propiedades": "📋 Ver/Editar Propiedades",
             "Buscar Propiedades": "🔍 Buscar Propiedades",
+            "Gestionar Fotos": "🖼️ Gestionar Fotos",
             "Exportar Datos": "📊 Exportar Datos"
         }[x]
     )
@@ -99,25 +109,55 @@ def crear_mapa(coordenadas=None, zoom_start=13):
     return m
 
 def validar_rut(rut):
-    rut = rut.replace(".", "").replace("-", "")
+    """
+    Valida un RUT chileno en formato:
+    - 12345678-9
+    - 12.345.678-9
+    - 123456789 (sin formato)
+    """
+    # Limpiar el RUT: quitar puntos, guión y espacios, convertir a mayúsculas
+    rut = rut.strip().upper().replace('.', '').replace('-', '').replace(' ', '')
+    
+    # Validar longitud mínima (sin dígito verificador: 1, con dígito verificador: 2)
     if len(rut) < 2:
         return False
-    body, verificador = rut[:-1], rut[-1].upper()
-    try:
-        body = int(body)
-    except:
+    
+    # Separar el cuerpo del dígito verificador
+    cuerpo = rut[:-1]
+    verificador = rut[-1]
+    
+    # Validar que el cuerpo sean solo dígitos
+    if not cuerpo.isdigit():
         return False
-    serie = range(2, 8)
+    
+    # Validar que el dígito verificador sea un dígito o K
+    if not (verificador.isdigit() or verificador == 'K'):
+        return False
+    
+    # Calcular el dígito verificador esperado
     suma = 0
-    for i in reversed(range(len(str(body)))):
-        suma += int(str(body)[i]) * serie[i % 6]
-    dvr = 11 - (suma % 11)
+    multiplicador = 2
+    
+    # Recorrer el cuerpo del RUT de derecha a izquierda
+    for c in reversed(cuerpo):
+        suma += int(c) * multiplicador
+        multiplicador += 1
+        if multiplicador == 8:
+            multiplicador = 2
+    
+    # Calcular el dígito verificador
+    resto = suma % 11
+    dvr = 11 - resto
+    
+    # Casos especiales
     if dvr == 11:
         dvr = '0'
     elif dvr == 10:
         dvr = 'K'
     else:
         dvr = str(dvr)
+    
+    # Comparar con el dígito verificador ingresado
     return verificador == dvr
 
 if opcion == "Agregar Propiedad":
@@ -177,29 +217,28 @@ if opcion == "Agregar Propiedad":
                 # Mostrar spinner durante el proceso
                 with st.spinner('Guardando información...'):
                     time.sleep(0.5)  # Simular proceso
-                    nueva_propiedad = {
-                    'RUT': rut,
-                    'Propietario': propietario,
-                    'Dirección': direccion,
-                    'ROL': rol,
-                    'Avalúo Total': avaluo,
-                    'Destino SII': destino_sii,
-                    'Destino según Terreno': destino_terreno,
-                    'Destino DOM': destino_dom,
-                    'N° en Terreno': num_terreno,
-                    'Coordenadas': coordenadas,
-                    'Fiscalizada DOM': fiscalizada,
-                    'M2 Terreno': m2_terreno,
-                    'M2 Construidos': m2_construidos,
-                    'Línea de Construcción': linea_construccion,
-                    'Año de Construcción': año_construccion,
-                    'Expediente DOM': expediente,
-                    'Observaciones': observaciones
-                }
-                st.session_state.df = pd.concat([st.session_state.df, 
-                                               pd.DataFrame([nueva_propiedad])], 
-                                               ignore_index=True)
-                st.markdown("""<div class='success-message'>✅ Propiedad agregada exitosamente!</div>""", unsafe_allow_html=True)
+                    nueva_propiedad = pd.DataFrame([{
+                        'RUT': rut,
+                        'Propietario': propietario,
+                        'Dirección': direccion,
+                        'ROL': rol,
+                        'Avalúo Total': avaluo,
+                        'Destino SII': destino_sii,
+                        'Destino según Terreno': destino_terreno,
+                        'Destino DOM': destino_dom,
+                        'N° en Terreno': num_terreno,
+                        'Coordenadas': coordenadas,
+                        'Fiscalizada DOM': fiscalizada,
+                        'M2 Terreno': m2_terreno,
+                        'M2 Construidos': m2_construidos,
+                        'Línea de Construcción': linea_construccion,
+                        'Año de Construcción': año_construccion,
+                        'Expediente DOM': expediente,
+                        'Observaciones': observaciones,
+                        'Fotos': []  # Inicializar lista vacía para fotos
+                    }])
+                    st.session_state.df = pd.concat([st.session_state.df, nueva_propiedad], ignore_index=True)
+                    st.markdown("""<div class='success-message'>✅ Propiedad agregada exitosamente!</div>""", unsafe_allow_html=True)
 
 elif opcion == "Ver/Editar Propiedades":
     st.markdown("""<h2>📋 Lista de Propiedades</h2>""", unsafe_allow_html=True)
@@ -325,5 +364,99 @@ elif opcion == "Exportar Datos":
             file_name="catastro_propiedades.xlsx",
             mime="application/vnd.ms-excel"
         )
+        
+        df_resultados = st.session_state.df
+        st.dataframe(df_resultados)
+        
+        # Mostrar botón para exportar resultados
+        if not df_resultados.empty:
+            csv = df_resultados.drop(columns=['Fotos']).to_csv(index=False, encoding='utf-8-sig')
+            st.download_button(
+                label="📥 Exportar resultados a CSV",
+                data=csv,
+                file_name='busqueda_propiedades.csv',
+                mime='text/csv',
+            )
     else:
         st.info("No hay datos para exportar.")
+
+elif opcion == "Gestionar Fotos":
+    st.markdown("""<h2>🖼️ Gestión de Fotos de Propiedades</h2>""", unsafe_allow_html=True)
+    st.markdown("""<p style='color: #666; margin-bottom: 2rem;'>Agregue o visualice fotos de las propiedades</p>""", unsafe_allow_html=True)
+    
+    # Seleccionar propiedad
+    if not st.session_state.df.empty:
+        # Crear lista de propiedades para el selector
+        propiedades = st.session_state.df.apply(
+            lambda x: f"{x['RUT']} - {x['Propietario']} - {x['Dirección']}", 
+            axis=1
+        ).tolist()
+        
+        propiedad_seleccionada = st.selectbox(
+            "Seleccione una propiedad:",
+            propiedades,
+            index=0
+        )
+        
+        # Obtener el índice de la propiedad seleccionada
+        idx = propiedades.index(propiedad_seleccionada)
+        propiedad = st.session_state.df.iloc[idx]
+        
+        st.markdown("### Información de la Propiedad")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**Propietario:** {propiedad['Propietario']}")
+            st.write(f"**RUT:** {propiedad['RUT']}")
+        with col2:
+            st.write(f"**Dirección:** {propiedad['Dirección']}")
+            st.write(f"**ROL:** {propiedad['ROL']}")
+        
+        st.markdown("---")
+        st.markdown("### Fotos de la Propiedad")
+        
+        # Mostrar fotos existentes
+        fotos = propiedad['Fotos'] if isinstance(propiedad['Fotos'], list) else []
+        
+        if fotos:
+            st.markdown("**Fotos existentes:**")
+            cols = st.columns(3)
+            for i, foto in enumerate(fotos):
+                with cols[i % 3]:
+                    st.image(foto, use_column_width=True)
+                    if st.button(f"Eliminar foto {i+1}", key=f"del_{i}"):
+                        # Eliminar la foto
+                        try:
+                            os.remove(foto)
+                            fotos.pop(i)
+                            st.session_state.df.at[idx, 'Fotos'] = fotos
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al eliminar la foto: {e}")
+        else:
+            st.info("No hay fotos para esta propiedad.")
+        
+        # Subir nuevas fotos
+        st.markdown("### Agregar Nuevas Fotos")
+        uploaded_files = st.file_uploader(
+            "Seleccione una o más fotos para esta propiedad",
+            type=['jpg', 'jpeg', 'png'],
+            accept_multiple_files=True
+        )
+        
+        if uploaded_files:
+            if st.button("Guardar Fotos"):
+                for uploaded_file in uploaded_files:
+                    # Guardar el archivo en la carpeta uploads
+                    file_path = os.path.join('uploads', f"{propiedad['RUT']}_{int(time.time())}_{uploaded_file.name}")
+                    with open(file_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    
+                    # Agregar la ruta a la lista de fotos
+                    if not isinstance(propiedad['Fotos'], list):
+                        st.session_state.df.at[idx, 'Fotos'] = []
+                    st.session_state.df.at[idx, 'Fotos'].append(file_path)
+                
+                st.success("¡Fotos guardadas correctamente!")
+                st.rerun()
+    else:
+        st.info("No hay propiedades registradas para gestionar fotos.")
