@@ -1,0 +1,5 @@
+    INFO: 2025-05-15 10:45:18,707:               log.py:   20: Logging to C:\Users\YBUSTAMANTEC\Desktop\catastro-propiedades\mdpdf.log
+   DEBUG: 2025-05-15 10:45:18,707:               cli.py:  103: Manual_Usuario_Catastro.md
+    INFO: 2025-05-15 10:45:18,710:         converter.py:   14: Manual_Usuario_Catastro.md
+   DEBUG: 2025-05-15 10:45:18,723:      pdf_renderer.py:  470: printSegment: Manual de Usuario
+   DEBUG: 2025-05-15 10:45:18,728:      pdf_renderer.py:  470: printSegment: Aplicación de Catastro de Propiedades
