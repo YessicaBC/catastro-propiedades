@@ -410,34 +410,52 @@ if opcion == "Agregar Propiedad":
         # Sección 4: Línea de Construcción Detallada
         with st.expander("🏗️ Detalles de la Construcción", expanded=False):
             st.markdown("**Línea de Construcción**")
-            col1, col2, col3 = st.columns(3)
             
-            with col1:
-                materialidad = st.selectbox(
-                    "Materialidad",
-                    options=["", "Hormigón", "Acero", "Madera", "Mixto", "Otro"],
-                    index=0,
-                    help="Seleccione el material principal de construcción"
-                )
+            # Lista para almacenar los valores de cada línea
+            lineas_construccion = []
             
-            with col2:
-                año_construccion_linea = st.selectbox(
-                    "Año",
-                    options=[""] + list(range(datetime.now().year, 1800, -1)),
-                    index=0,
-                    help="Año de la construcción"
-                )
+            # Crear 6 filas de campos
+            for i in range(1, 7):
+                st.markdown(f"**Línea {i}**")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    materialidad = st.selectbox(
+                        f"Materialidad {i}",
+                        options=["", "Hormigón", "Acero", "Madera", "Mixto", "Otro"],
+                        index=0,
+                        key=f"materialidad_{i}",
+                        help=f"Seleccione el material principal de construcción para la línea {i}"
+                    )
+                
+                with col2:
+                    año = st.selectbox(
+                        f"Año {i}",
+                        options=[""] + list(range(datetime.now().year, 1800, -1)),
+                        index=0,
+                        key=f"año_{i}",
+                        help=f"Año de construcción para la línea {i}"
+                    )
+                
+                with col3:
+                    m2 = st.selectbox(
+                        f"M² {i}",
+                        options=[""] + [f"{x} m²" for x in range(10, 1001, 10)],
+                        index=0,
+                        key=f"m2_{i}",
+                        help=f"Metros cuadrados construidos para la línea {i}"
+                    )
+                
+                # Agregar a la lista si al menos un campo tiene valor
+                if materialidad or año or m2 != "":
+                    linea = f"{materialidad} {año} {m2}".strip()
+                    lineas_construccion.append(linea)
+                
+                # Agregar un pequeño espacio entre líneas
+                st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
             
-            with col3:
-                m2_construccion = st.selectbox(
-                    "M²",
-                    options=[""] + [f"{i} m²" for i in range(10, 1001, 10)],
-                    index=0,
-                    help="Metros cuadrados construidos"
-                )
-            
-            # Combinar los valores seleccionados en un solo string
-            linea_construccion = f"{materialidad} {año_construccion_linea} {m2_construccion}".strip()
+            # Combinar todas las líneas en un solo string
+            linea_construccion = " | ".join(filter(None, lineas_construccion))
         
         # Sección 5: Ubicación
         with st.expander("📍 Ubicación en Mapa", expanded=False):
