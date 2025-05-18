@@ -350,19 +350,28 @@ if opcion == "Agregar Propiedad":
     st.markdown("""<p style='color: #666; margin-bottom: 2rem;'>Complete el formulario con los datos de la propiedad</p>""", unsafe_allow_html=True)
     
     with st.form("formulario_propiedad"):
+        # Primera fila con RUT y Propietario
         col1, col2 = st.columns(2)
         
         with col1:
             rut = st.text_input("RUT Propietario")
+        with col2:
             propietario = st.text_input("Propietario")
+        
+        # Segunda fila con N° de contacto
+        num_contacto = st.text_input("N° de contacto")
+        
+        # Resto de los campos
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        
+        with col1:
             direccion = st.text_area("Dirección")
             rol = st.text_input("ROL Propiedad")
             avaluo = st.number_input("Avalúo Total", min_value=0, step=1000)
             destino_sii = st.text_input("Destino SII")
-            # Se eliminó el campo "Destino según Terreno"
             destino_dom = st.text_input("Destino DOM")
-            num_contacto = st.text_input("N° de contacto")
-            
+                
         with col2:
             coordenadas = st.text_input("Coordenadas (Lat, Long)", help="Ingrese las coordenadas en formato: latitud, longitud (ejemplo: -33.4172, -70.6506)")
             if coordenadas:
@@ -379,19 +388,19 @@ if opcion == "Agregar Propiedad":
                         folium_static(m)
                 else:
                     st.error("Formato de coordenadas inválido. Use: latitud, longitud")
+            
             fiscalizada = st.selectbox(
                 "Fiscalización DOM",
                 options=["CONSTRUCCION REGULARIZADA", "CONSTRUCCION IRREGULAR"],
                 index=None,
                 placeholder="Seleccione una opción")
             
-            # Nuevo campo PATENTE COMERCIAL
             patente_comercial = st.selectbox(
                 "PATENTE COMERCIAL",
                 options=["PATENTE AL DIA", "PATENTE MOROSA", "SIN PATENTE"],
                 index=None,
                 placeholder="Seleccione estado de la patente")
-                
+                    
             m2_terreno = st.number_input("M2 Terreno", min_value=0.0)
             m2_construidos = st.number_input("M2 Construidos", min_value=0.0)
             linea_construccion = st.text_input("Línea de Construcción")
@@ -399,8 +408,10 @@ if opcion == "Agregar Propiedad":
                                              min_value=1800, 
                                              max_value=datetime.now().year)
             expediente = st.text_input("Expediente DOM")
-            
+        
         observaciones = st.text_area("Observaciones")
+        
+        # Botón de envío
         submitted = st.form_submit_button("Guardar Propiedad")
         
         if submitted:
