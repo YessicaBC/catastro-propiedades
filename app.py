@@ -346,73 +346,106 @@ def validar_rut(rut):
     return verificador == dvr
 
 if opcion == "Agregar Propiedad":
-    st.markdown("""<h2>📝 Agregar Nueva Propiedad</h2>""", unsafe_allow_html=True)
-    st.markdown("""<p style='color: #666; margin-bottom: 2rem;'>Complete el formulario con los datos de la propiedad</p>""", unsafe_allow_html=True)
+    st.markdown("""
+        <div style='background-color:#f8f9fa; padding:20px; border-radius:10px; margin-bottom:30px;'>
+            <h2 style='color:#1e3d59; margin:0;'>📝 Agregar Nueva Propiedad</h2>
+            <p style='color:#666; margin:5px 0 0 0;'>Complete el formulario con los datos de la propiedad</p>
+        </div>
+    """, unsafe_allow_html=True)
     
     with st.form("formulario_propiedad"):
-        # Primera fila con RUT y Propietario
-        col1, col2 = st.columns(2)
+        # Sección 1: Información Básica
+        with st.expander("📋 Información Básica", expanded=True):
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                rut = st.text_input("RUT Propietario *", help="Formato: 12345678-9")
+            with col2:
+                propietario = st.text_input("Propietario *")
+            
+            num_contacto = st.text_input("N° de contacto *", help="Número de teléfono de contacto")
+            direccion = st.text_area("Dirección *", height=70)
         
-        with col1:
-            rut = st.text_input("RUT Propietario")
-        with col2:
-            propietario = st.text_input("Propietario")
-        
-        # Segunda fila con N° de contacto
-        num_contacto = st.text_input("N° de contacto")
-        
-        # Resto de los campos
-        st.markdown("---")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            direccion = st.text_area("Dirección")
-            rol = st.text_input("ROL Propiedad")
-            avaluo = st.number_input("Avalúo Total", min_value=0, step=1000)
-            destino_sii = st.text_input("Destino SII")
-            destino_dom = st.text_input("Destino DOM")
+        # Sección 2: Detalles de la Propiedad
+        with st.expander("🏠 Detalles de la Propiedad", expanded=True):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                rol = st.text_input("ROL Propiedad *")
+                avaluo = st.number_input("Avalúo Total *", min_value=0, step=1000, format="%d")
+                m2_terreno = st.number_input("M² Terreno *", min_value=0.0, step=0.01)
+                m2_construidos = st.number_input("M² Construidos *", min_value=0.0, step=0.01)
                 
-        with col2:
-            coordenadas = st.text_input("Coordenadas (Lat, Long)", help="Ingrese las coordenadas en formato: latitud, longitud (ejemplo: -33.4172, -70.6506)")
+            with col2:
+                año_construccion = st.number_input(
+                    "Año de Construcción", 
+                    min_value=1800, 
+                    max_value=datetime.now().year,
+                    value=datetime.now().year
+                )
+                linea_construccion = st.text_input("Línea de Construcción")
+                expediente = st.text_input("Expediente DOM")
+        
+        # Sección 3: Clasificación y Fiscalización
+        with st.expander("📋 Clasificación y Fiscalización", expanded=False):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                destino_sii = st.text_input("Destino SII")
+                destino_dom = st.text_input("Destino DOM")
+                
+            with col2:
+                fiscalizada = st.selectbox(
+                    "Fiscalización DOM *",
+                    options=["", "CONSTRUCCION REGULARIZADA", "CONSTRUCCION IRREGULAR"],
+                    index=0,
+                    help="Seleccione el estado de fiscalización"
+                )
+                
+                patente_comercial = st.selectbox(
+                    "PATENTE COMERCIAL *",
+                    options=["", "PATENTE AL DIA", "PATENTE MOROSA", "SIN PATENTE"],
+                    index=0,
+                    help="Seleccione el estado de la patente"
+                )
+        
+        # Sección 4: Ubicación
+        with st.expander("📍 Ubicación en Mapa", expanded=False):
+            coordenadas = st.text_input(
+                "Coordenadas (Lat, Long)", 
+                placeholder="Ej: -33.4172, -70.6506",
+                help="Ingrese las coordenadas en formato: latitud, longitud"
+            )
+            
             if coordenadas:
                 coords = parse_coordenadas(coordenadas)
                 if coords:
-                    st.success("Coordenadas válidas")
-                    with st.expander("Ver ubicación en mapa"):
-                        m = crear_mapa(coords)
-                        folium.Marker(
-                            coords,
-                            popup="Nueva propiedad",
-                            icon=folium.Icon(color='red', icon='info-sign')
-                        ).add_to(m)
-                        folium_static(m)
+                    st.success("✅ Coordenadas válidas")
+                    m = crear_mapa(coords)
+                    folium.Marker(
+                        coords,
+                        popup=f"{propiedad if 'propiedad' in locals() else 'Nueva propiedad'}",
+                        icon=folium.Icon(color='red', icon='info-sign')
+                    ).add_to(m)
+                    folium_static(m, width=700)
                 else:
-                    st.error("Formato de coordenadas inválido. Use: latitud, longitud")
-            
-            fiscalizada = st.selectbox(
-                "Fiscalización DOM",
-                options=["CONSTRUCCION REGULARIZADA", "CONSTRUCCION IRREGULAR"],
-                index=None,
-                placeholder="Seleccione una opción")
-            
-            patente_comercial = st.selectbox(
-                "PATENTE COMERCIAL",
-                options=["PATENTE AL DIA", "PATENTE MOROSA", "SIN PATENTE"],
-                index=None,
-                placeholder="Seleccione estado de la patente")
-                    
-            m2_terreno = st.number_input("M2 Terreno", min_value=0.0)
-            m2_construidos = st.number_input("M2 Construidos", min_value=0.0)
-            linea_construccion = st.text_input("Línea de Construcción")
-            año_construccion = st.number_input("Año de Construcción", 
-                                             min_value=1800, 
-                                             max_value=datetime.now().year)
-            expediente = st.text_input("Expediente DOM")
+                    st.error("❌ Formato de coordenadas inválido. Use: latitud, longitud")
         
-        observaciones = st.text_area("Observaciones")
+        # Sección 5: Observaciones
+        with st.expander("📝 Observaciones Adicionales", expanded=False):
+            observaciones = st.text_area("Ingrese cualquier observación adicional", height=100)
         
         # Botón de envío
-        submitted = st.form_submit_button("Guardar Propiedad")
+        st.markdown("<div style='margin: 20px 0;'></div>", unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            submitted = st.form_submit_button(
+                "💾 Guardar Propiedad", 
+                use_container_width=True,
+                type="primary"
+            )
+        
+        st.markdown("<div style='margin: 10px 0;'><small>* Campos obligatorios</small></div>", unsafe_allow_html=True)
         
         if submitted:
             if not validar_rut(rut):
