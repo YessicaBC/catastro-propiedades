@@ -3,6 +3,13 @@ import folium
 from streamlit_folium import folium_static
 import plotly.graph_objects as go
 import time
+import pandas as pd
+from datetime import datetime
+import os
+import json
+from pathlib import Path
+import sqlite3
+from sqlite3 import Error
 
 # Configuración de la página
 st.set_page_config(
@@ -11,9 +18,206 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-import pandas as pd
-from datetime import datetime
-import time
+# Configuración de la base de datos
+DB_PATH = 'catastro_propiedades.db'
+UPLOAD_FOLDER = 'uploads'
+
+# Crear directorios necesarios
+Path(UPLOAD_FOLDER).mkdir(exist_ok=True)
+
+def get_db_connection():
+    """Crea una conexión a la base de datos SQLite"""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+    except Error as e:
+        st.error(f"Error al conectar a la base de datos: {e}")
+        return None
+
+def init_db():
+    """Inicializa la base de datos con las tablas necesarias"""
+    conn = get_db_connection()
+    if conn is not None:
+        try:
+            cursor = conn.cursor()
+            
+            # Tabla de propiedades
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS propiedades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                rut TEXT NOT NULL,
+                propietario TEXT NOT NULL,
+                direccion TEXT NOT NULL,
+                rol_propiedad TEXT NOT NULL,
+                avaluo_total REAL NOT NULL,
+                destino_sii TEXT,
+                destino_dom TEXT,
+                patente_comercial TEXT,
+                num_contacto TEXT,
+                coordenadas TEXT,
+                fiscalizacion_dom TEXT,
+                m2_terreno REAL,
+                m2_construidos REAL,
+                linea_construccion TEXT,
+                ano_construccion INTEGER,
+                expediente_dom TEXT,
+                observaciones TEXT,
+                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(rut, rol_propiedad)
+            )
+            ''')
+            
+            # Tabla de fotos
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS fotos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                propiedad_id INTEGER,
+                ruta_archivo TEXT NOT NULL,
+                fecha_subida TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (propiedad_id) REFERENCES propiedades (id) ON DELETE CASCADE
+            )
+            ''')
+            
+            # Crear índices para búsquedas frecuentes
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_propiedades_rut ON propiedades(rut)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_propiedades_rol ON propiedades(rol_propiedad)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_fotos_propiedad ON fotos(propiedad_id)')
+            
+            conn.commit()
+            return True
+        except Error as e:
+            st.error(f"Error al inicializar la base de datos: {e}")
+            return False
+        finally:
+            conn.close()
+    return False
+
+def guardar_propiedad(propiedad):
+    """Guarda una nueva propiedad en la base de datos"""
+    conn = get_db_connection()
+    if conn is not None:
+        try:
+            cursor = conn.cursor()
+            
+            # Insertar propiedad
+            cursor.execute('''
+            INSERT OR REPLACE INTO propiedades (
+                rut, propietario, direccion, rol_propiedad, avaluo_total,
+                destino_sii, destino_dom, patente_comercial, num_contacto,
+                coordenadas, fiscalizacion_dom, m2_terreno, m2_construidos,
+                linea_construccion, ano_construccion, expediente_dom, observaciones
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                propiedad['RUT'], propiedad['Propietario'], propiedad['Dirección'],
+                propiedad['ROL Propiedad'], propiedad['Avalúo Total'], propiedad['Destino SII'],
+                propiedad['Destino DOM'], propiedad['Patente Comercial'], propiedad['N° de contacto'],
+                propiedad['Coordenadas'], propiedad['Fiscalización DOM'], propiedad['M2 Terreno'],
+                propiedad['M2 Construidos'], propiedad['Línea de Construcción'],
+                propiedad['Año de Construcción'], propiedad['Expediente DOM'], propiedad['Observaciones']
+            ))
+            
+            propiedad_id = cursor.lastrowid
+            conn.commit()
+            return propiedad_id
+        except Error as e:
+            st.error(f"Error al guardar la propiedad: {e}")
+            return None
+        finally:
+            conn.close()
+    return None
+
+def guardar_fotos(propiedad_id, fotos):
+    """Guarda las rutas de las fotos en la base de datos"""
+    conn = get_db_connection()
+    if conn is not None:
+        try:
+            cursor = conn.cursor()
+            # Primero eliminamos las fotos existentes
+            cursor.execute('DELETE FROM fotos WHERE propiedad_id = ?', (propiedad_id,))
+            # Luego insertamos las nuevas
+            for foto in fotos:
+                cursor.execute(
+                    'INSERT INTO fotos (propiedad_id, ruta_archivo) VALUES (?, ?)',
+                    (propiedad_id, foto)
+                )
+            conn.commit()
+            return True
+        except Error as e:
+            st.error(f"Error al guardar las fotos: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    return False
+
+def obtener_propiedades(pagina=1, por_pagina=10, filtros=None):
+    """Obtiene propiedades paginadas con filtros opcionales"""
+    conn = get_db_connection()
+    if conn is not None:
+        try:
+            cursor = conn.cursor()
+            
+            # Construir consulta con filtros
+            query = 'SELECT * FROM propiedades'
+            params = []
+            
+            if filtros:
+                condiciones = []
+                for campo, valor in filtros.items():
+                    if valor:
+                        condiciones.append(f"{campo} LIKE ?")
+                        params.append(f"%{valor}%")
+                
+                if condiciones:
+                    query += ' WHERE ' + ' AND '.join(condiciones)
+            
+            # Contar total de registros
+            count_query = 'SELECT COUNT(*) FROM (' + query + ')'
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()[0]
+            
+            # Aplicar paginación
+            offset = (pagina - 1) * por_pagina
+            query += ' ORDER BY fecha_creacion DESC LIMIT ? OFFSET ?'
+            params.extend([por_pagina, offset])
+            
+            cursor.execute(query, params)
+            columnas = [desc[0] for desc in cursor.description]
+            propiedades = [dict(zip(columnas, fila)) for fila in cursor.fetchall()]
+            
+            # Obtener fotos para cada propiedad
+            for propiedad in propiedades:
+                cursor.execute(
+                    'SELECT ruta_archivo FROM fotos WHERE propiedad_id = ?',
+                    (propiedad['id'],)
+                )
+                propiedad['Fotos'] = [foto[0] for foto in cursor.fetchall()]
+            
+            return {
+                'datos': propiedades,
+                'total': total,
+                'pagina': pagina,
+                'por_pagina': por_pagina,
+                'total_paginas': (total + por_pagina - 1) // por_pagina
+            }
+            
+        except Error as e:
+            st.error(f"Error al obtener propiedades: {e}")
+            return {'datos': [], 'total': 0, 'pagina': 1, 'por_pagina': por_pagina, 'total_paginas': 0}
+        finally:
+            conn.close()
+    return {'datos': [], 'total': 0, 'pagina': 1, 'por_pagina': por_pagina, 'total_paginas': 0}
+
+# Inicializar la base de datos al inicio
+if 'db_initialized' not in st.session_state:
+    if init_db():
+        st.session_state.db_initialized = True
+    else:
+        st.error("No se pudo inicializar la base de datos. La aplicación podría no funcionar correctamente.")
 
 # Configuración de estilos personalizados
 st.markdown("""
@@ -42,24 +246,6 @@ with st.container():
     # Línea separadora
     st.markdown("---")
 
-# Crear directorio para almacenar imágenes si no existe
-import os
-if not os.path.exists('uploads'):
-    os.makedirs('uploads')
-
-# Inicializar el DataFrame en la sesión si no existe
-if 'df' not in st.session_state:
-    st.session_state.df = pd.DataFrame(columns=[
-        'RUT', 'Propietario', 'Dirección', 'ROL', 'Avalúo Total',
-        'Destino SII', 'Destino según Terreno', 'Destino DOM',
-        'N° en Terreno', 'Coordenadas', 'Fiscalizada DOM', 'M2 Terreno',
-        'M2 Construidos', 'Línea de Construcción',
-        'Año de Construcción', 'Expediente DOM', 'Observaciones',
-        'Fotos'  # Lista de rutas de fotos
-    ])
-    # Inicializar la columna de fotos como lista vacía para todas las filas
-    st.session_state.df['Fotos'] = st.session_state.df['Fotos'].apply(lambda x: [] if pd.isna(x) else x)
-
 # Menú lateral con estilo
 with st.sidebar:
     st.markdown("""<h2>🔍 Menú de Navegación</h2>""", unsafe_allow_html=True)
@@ -80,7 +266,6 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("""<p style='font-size: 0.8rem; color: #666;'>Sistema de Catastro Municipal</p>""", unsafe_allow_html=True)
 
-# Función para validar RUT chileno
 def parse_coordenadas(coord_str):
     """Convierte string de coordenadas a tupla de flotantes (lat, lon)"""
     try:
@@ -168,17 +353,17 @@ if opcion == "Agregar Propiedad":
         col1, col2 = st.columns(2)
         
         with col1:
-            rut = st.text_input("RUT (formato: 12345678-9)")
+            rut = st.text_input("RUT Propietario")
             propietario = st.text_input("Propietario")
-            direccion = st.text_input("Dirección")
-            rol = st.text_input("ROL")
-            avaluo = st.number_input("Avalúo Total", min_value=0)
+            direccion = st.text_area("Dirección")
+            rol = st.text_input("ROL Propiedad")
+            avaluo = st.number_input("Avalúo Total", min_value=0, step=1000)
             destino_sii = st.text_input("Destino SII")
-            destino_terreno = st.text_input("Destino según Terreno")
+            # Se eliminó el campo "Destino según Terreno"
             destino_dom = st.text_input("Destino DOM")
+            num_contacto = st.text_input("N° de contacto")
             
         with col2:
-            num_terreno = st.text_input("N° en Terreno")
             coordenadas = st.text_input("Coordenadas (Lat, Long)", help="Ingrese las coordenadas en formato: latitud, longitud (ejemplo: -33.4172, -70.6506)")
             if coordenadas:
                 coords = parse_coordenadas(coordenadas)
@@ -195,10 +380,18 @@ if opcion == "Agregar Propiedad":
                 else:
                     st.error("Formato de coordenadas inválido. Use: latitud, longitud")
             fiscalizada = st.selectbox(
-                "Fiscalizada DOM",
-                options=["CERRADA", "SIN PATENTE AL DIA", "CON PATENTE AL DIA", "VIVIENDA COLECTIVA", "SIN INFORMACION"],
+                "Fiscalización DOM",
+                options=["CONSTRUCCION REGULARIZADA", "CONSTRUCCION IRREGULAR"],
                 index=None,
                 placeholder="Seleccione una opción")
+            
+            # Nuevo campo PATENTE COMERCIAL
+            patente_comercial = st.selectbox(
+                "PATENTE COMERCIAL",
+                options=["PATENTE AL DIA", "PATENTE MOROSA", "SIN PATENTE"],
+                index=None,
+                placeholder="Seleccione estado de la patente")
+                
             m2_terreno = st.number_input("M2 Terreno", min_value=0.0)
             m2_construidos = st.number_input("M2 Construidos", min_value=0.0)
             linea_construccion = st.text_input("Línea de Construcción")
@@ -217,18 +410,18 @@ if opcion == "Agregar Propiedad":
                 # Mostrar spinner durante el proceso
                 with st.spinner('Guardando información...'):
                     time.sleep(0.5)  # Simular proceso
-                    nueva_propiedad = pd.DataFrame([{
+                    nueva_propiedad = {
                         'RUT': rut,
                         'Propietario': propietario,
                         'Dirección': direccion,
-                        'ROL': rol,
+                        'ROL Propiedad': rol,
                         'Avalúo Total': avaluo,
                         'Destino SII': destino_sii,
-                        'Destino según Terreno': destino_terreno,
                         'Destino DOM': destino_dom,
-                        'N° en Terreno': num_terreno,
+                        'Patente Comercial': patente_comercial,
+                        'N° de contacto': num_contacto,
                         'Coordenadas': coordenadas,
-                        'Fiscalizada DOM': fiscalizada,
+                        'Fiscalización DOM': fiscalizada,
                         'M2 Terreno': m2_terreno,
                         'M2 Construidos': m2_construidos,
                         'Línea de Construcción': linea_construccion,
@@ -236,9 +429,12 @@ if opcion == "Agregar Propiedad":
                         'Expediente DOM': expediente,
                         'Observaciones': observaciones,
                         'Fotos': []  # Inicializar lista vacía para fotos
-                    }])
-                    st.session_state.df = pd.concat([st.session_state.df, nueva_propiedad], ignore_index=True)
-                    st.markdown("""<div class='success-message'>✅ Propiedad agregada exitosamente!</div>""", unsafe_allow_html=True)
+                    }
+                    propiedad_id = guardar_propiedad(nueva_propiedad)
+                    if propiedad_id:
+                        st.markdown("""<div class='success-message'>✅ Propiedad agregada exitosamente!</div>""", unsafe_allow_html=True)
+                    else:
+                        st.error("Error al guardar los datos. Por favor, intente nuevamente.")
 
 elif opcion == "Ver/Editar Propiedades":
     st.markdown("""<h2>📋 Lista de Propiedades</h2>""", unsafe_allow_html=True)
@@ -247,107 +443,160 @@ elif opcion == "Ver/Editar Propiedades":
     # Crear pestañas para tabla, mapa y estadísticas
     tab1, tab2, tab3 = st.tabs(["📋 Tabla de Datos", "🗺️ Mapa de Propiedades", "📈 Estadísticas"])
     
-    if len(st.session_state.df) > 0:
+    propiedades = obtener_propiedades()
+    
+    if len(propiedades['datos']) > 0:
         with tab1:
-            st.data_editor(st.session_state.df, num_rows="dynamic")
+            edited_df = pd.DataFrame(propiedades['datos'])
+            if not edited_df.empty:
+                edited_df = st.data_editor(edited_df, num_rows="dynamic")
+                if not edited_df.equals(pd.DataFrame(propiedades['datos'])):
+                    # Actualizar propiedades en la base de datos
+                    for i, propiedad in edited_df.iterrows():
+                        guardar_propiedad(propiedad.to_dict())
+                    st.success("¡Cambios guardados exitosamente!")
+            else:
+                st.info("No hay propiedades registradas.")
         
         with tab2:
             m = crear_mapa()
             # Agregar marcadores para cada propiedad con coordenadas válidas
-            for idx, row in st.session_state.df.iterrows():
-                if isinstance(row['Coordenadas'], str):
-                    coords = parse_coordenadas(row['Coordenadas'])
+            for propiedad in propiedades['datos']:
+                if isinstance(propiedad['Coordenadas'], str):
+                    coords = parse_coordenadas(propiedad['Coordenadas'])
                     if coords:
                         folium.Marker(
                             coords,
-                            popup=f"ROL: {row['ROL']}<br>Dirección: {row['Dirección']}<br>Propietario: {row['Propietario']}",
+                            popup=f"ROL Propiedad: {propiedad['ROL Propiedad']}<br>Dirección: {propiedad['Dirección']}<br>Propietario: {propiedad['Propietario']}",
                             icon=folium.Icon(color='blue', icon='info-sign')
                         ).add_to(m)
             folium_static(m)
         
         with tab3:
-            st.markdown("""<h3 style='color: #1e3d59;'>📈 Distribución de Propiedades Fiscalizadas</h3>""", unsafe_allow_html=True)
+            st.markdown("""<h3 style='color: #1e3d59;'>📈 Estado de Fiscalización de las Propiedades</h3>""", unsafe_allow_html=True)
             
-            # Calcular la distribución de propiedades fiscalizadas
-            fiscalizadas_count = st.session_state.df['Fiscalizada DOM'].value_counts()
+            # Mostrar estadísticas detalladas
+            st.subheader("Análisis por Fiscalización DOM")
+            fiscalizadas_count = {}
+            for propiedad in propiedades['datos']:
+                fiscalizacion_dom = propiedad['Fiscalización DOM']
+                if fiscalizacion_dom in fiscalizadas_count:
+                    fiscalizadas_count[fiscalizacion_dom] += 1
+                else:
+                    fiscalizadas_count[fiscalizacion_dom] = 1
             
-            # Crear gráfico de dona con Plotly
-            fig = go.Figure(data=[go.Pie(
-                labels=fiscalizadas_count.index,
-                values=fiscalizadas_count.values,
-                hole=0.4,
-                marker_colors=['#FF9800', '#f44336', '#4CAF50', '#2196F3', '#9E9E9E']
+            # Gráfico de torta para Fiscalización DOM
+            fig1 = go.Figure(data=[go.Pie(
+                labels=list(fiscalizadas_count.keys()),
+                values=list(fiscalizadas_count.values()),
+                hole=.3,
+                textinfo='label+percent',
+                marker=dict(colors=['#2ecc71', '#e74c3c', '#3498db'])
             )])
-            
-            fig.update_layout(
-                title='Propiedades Fiscalizadas vs No Fiscalizadas',
-                annotations=[dict(text=f'Total: {len(st.session_state.df)}', x=0.5, y=0.5, font_size=20, showarrow=False)],
+            fig1.update_layout(
+                title='Distribución por Estado de Fiscalización',
                 showlegend=True,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
             )
+            st.plotly_chart(fig1, use_container_width=True)
             
-            # Mostrar gráfico
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Mostrar estadísticas detalladas en dos filas
-            col1, col2, col3 = st.columns(3)
-            
-            # Primera fila
+            # Mostrar métricas para Fiscalización DOM
+            st.subheader("Resumen de Fiscalización")
+            col1, col2 = st.columns(2)
             with col1:
                 st.metric(
-                    label="CERRADA",
-                    value=fiscalizadas_count.get('CERRADA', 0),
-                    delta=f"{(fiscalizadas_count.get('CERRADA', 0) / len(st.session_state.df) * 100):.1f}%" if len(st.session_state.df) > 0 else "0%"
+                    label="CONSTRUCCION REGULARIZADA",
+                    value=fiscalizadas_count.get('CONSTRUCCION REGULARIZADA', 0),
+                    delta=f"{(fiscalizadas_count.get('CONSTRUCCION REGULARIZADA', 0) / len(propiedades['datos']) * 100):.1f}% del total" if len(propiedades['datos']) > 0 else "0%"
                 )
             with col2:
                 st.metric(
-                    label="SIN PATENTE AL DIA",
-                    value=fiscalizadas_count.get('SIN PATENTE AL DIA', 0),
-                    delta=f"{(fiscalizadas_count.get('SIN PATENTE AL DIA', 0) / len(st.session_state.df) * 100):.1f}%" if len(st.session_state.df) > 0 else "0%"
-                )
-            with col3:
-                st.metric(
-                    label="CON PATENTE AL DIA",
-                    value=fiscalizadas_count.get('CON PATENTE AL DIA', 0),
-                    delta=f"{(fiscalizadas_count.get('CON PATENTE AL DIA', 0) / len(st.session_state.df) * 100):.1f}%" if len(st.session_state.df) > 0 else "0%"
+                    label="CONSTRUCCION IRREGULAR",
+                    value=fiscalizadas_count.get('CONSTRUCCION IRREGULAR', 0),
+                    delta=f"{(fiscalizadas_count.get('CONSTRUCCION IRREGULAR', 0) / len(propiedades['datos']) * 100):.1f}% del total" if len(propiedades['datos']) > 0 else "0%"
                 )
             
-            # Segunda fila
-            col4, col5, col6 = st.columns(3)
-            with col4:
-                st.metric(
-                    label="VIVIENDA COLECTIVA",
-                    value=fiscalizadas_count.get('VIVIENDA COLECTIVA', 0),
-                    delta=f"{(fiscalizadas_count.get('VIVIENDA COLECTIVA', 0) / len(st.session_state.df) * 100):.1f}%" if len(st.session_state.df) > 0 else "0%"
+            # Análisis de PATENTE COMERCIAL
+            st.markdown("---")
+            st.subheader("Análisis por Patente Comercial")
+            if 'Patente Comercial' in propiedades['datos'][0]:
+                patentes_count = {}
+                for propiedad in propiedades['datos']:
+                    patente_comercial = propiedad['Patente Comercial']
+                    if patente_comercial in patentes_count:
+                        patentes_count[patente_comercial] += 1
+                    else:
+                        patentes_count[patente_comercial] = 1
+                
+                # Gráfico de barras para Patente Comercial
+                fig2 = go.Figure([
+                    go.Bar(
+                        x=list(patentes_count.keys()),
+                        y=list(patentes_count.values()),
+                        marker_color=['#3498db', '#2ecc71', '#e74c3c']
+                    )
+                ])
+                fig2.update_layout(
+                    title='Distribución por Estado de Patente Comercial',
+                    xaxis_title='Estado de Patente',
+                    yaxis_title='Cantidad de Propiedades',
+                    showlegend=False
                 )
-            with col5:
-                st.metric(
-                    label="SIN INFORMACION",
-                    value=fiscalizadas_count.get('SIN INFORMACION', 0),
-                    delta=f"{(fiscalizadas_count.get('SIN INFORMACION', 0) / len(st.session_state.df) * 100):.1f}%" if len(st.session_state.df) > 0 else "0%"
-                )
+                st.plotly_chart(fig2, use_container_width=True)
+                
+                # Mostrar métricas para Patente Comercial
+                st.subheader("Resumen de Patentes")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric(
+                        label="PATENTE AL DIA",
+                        value=patentes_count.get('PATENTE AL DIA', 0),
+                        delta=f"{(patentes_count.get('PATENTE AL DIA', 0) / len(propiedades['datos']) * 100):.1f}% del total" if len(propiedades['datos']) > 0 else "0%"
+                    )
+                with col2:
+                    st.metric(
+                        label="PATENTE MOROSA",
+                        value=patentes_count.get('PATENTE MOROSA', 0),
+                        delta=f"{(patentes_count.get('PATENTE MOROSA', 0) / len(propiedades['datos']) * 100):.1f}% del total" if len(propiedades['datos']) > 0 else "0%"
+                    )
+                with col3:
+                    st.metric(
+                        label="SIN PATENTE",
+                        value=patentes_count.get('SIN PATENTE', 0),
+                        delta=f"{(patentes_count.get('SIN PATENTE', 0) / len(propiedades['datos']) * 100):.1f}% del total" if len(propiedades['datos']) > 0 else "0%"
+                    )
+                
+                # Análisis cruzado entre Fiscalización y Patente
+                st.markdown("---")
+                st.subheader("Relación entre Fiscalización y Patente Comercial")
+                if not propiedades['datos'].empty:
+                    cross_tab = {}
+                    for propiedad in propiedades['datos']:
+                        fiscalizacion_dom = propiedad['Fiscalización DOM']
+                        patente_comercial = propiedad['Patente Comercial']
+                        if fiscalizacion_dom in cross_tab:
+                            if patente_comercial in cross_tab[fiscalizacion_dom]:
+                                cross_tab[fiscalizacion_dom][patente_comercial] += 1
+                            else:
+                                cross_tab[fiscalizacion_dom][patente_comercial] = 1
+                        else:
+                            cross_tab[fiscalizacion_dom] = {patente_comercial: 1}
+                    
+                    st.write(cross_tab)
     else:
         st.info("No hay propiedades registradas.")
 
 elif opcion == "Buscar Propiedades":
     st.markdown("""<h2>🔍 Buscar Propiedades</h2>""", unsafe_allow_html=True)
-    st.markdown("""<p style='color: #666; margin-bottom: 2rem;'>Busque propiedades por RUT, Propietario, Dirección o ROL</p>""", unsafe_allow_html=True)
+    st.markdown("""<p style='color: #666; margin-bottom: 2rem;'>Busque propiedades por RUT, Propietario, Dirección o ROL Propiedad</p>""", unsafe_allow_html=True)
     
-    busqueda = st.text_input("Ingrese término de búsqueda (RUT, Propietario, Dirección, ROL)")
+    busqueda = st.text_input("Ingrese término de búsqueda (RUT, Propietario, Dirección, ROL Propiedad)")
     
     if busqueda:
-        resultado = st.session_state.df[
-            st.session_state.df.apply(lambda row: 
-                busqueda.lower() in str(row['RUT']).lower() or
-                busqueda.lower() in str(row['Propietario']).lower() or
-                busqueda.lower() in str(row['Dirección']).lower() or
-                busqueda.lower() in str(row['ROL']).lower(),
-                axis=1
-            )
-        ]
+        resultado = obtener_propiedades(filtros={'rut': busqueda, 'propietario': busqueda, 'direccion': busqueda, 'rol_propiedad': busqueda})
         
-        if len(resultado) > 0:
-            st.write(resultado)
+        if len(resultado['datos']) > 0:
+            st.write(resultado['datos'])
         else:
             st.info("No se encontraron propiedades que coincidan con la búsqueda.")
 
@@ -355,9 +604,12 @@ elif opcion == "Exportar Datos":
     st.markdown("""<h2>📊 Exportar Datos</h2>""", unsafe_allow_html=True)
     st.markdown("""<p style='color: #666; margin-bottom: 2rem;'>Exporte los datos del catastro en formato Excel</p>""", unsafe_allow_html=True)
     
-    if len(st.session_state.df) > 0:
+    propiedades = obtener_propiedades()
+    
+    if len(propiedades['datos']) > 0:
         # Exportar a Excel
-        excel_file = st.session_state.df.to_excel(index=False)
+        df = pd.DataFrame(propiedades['datos'])
+        excel_file = df.to_excel(index=False)
         st.download_button(
             label="Descargar como Excel",
             data=excel_file,
@@ -365,12 +617,9 @@ elif opcion == "Exportar Datos":
             mime="application/vnd.ms-excel"
         )
         
-        df_resultados = st.session_state.df
-        st.dataframe(df_resultados)
-        
         # Mostrar botón para exportar resultados
-        if not df_resultados.empty:
-            csv = df_resultados.drop(columns=['Fotos']).to_csv(index=False, encoding='utf-8-sig')
+        if not df.empty:
+            csv = df.drop(columns=['Fotos']).to_csv(index=False, encoding='utf-8-sig')
             st.download_button(
                 label="📥 Exportar resultados a CSV",
                 data=csv,
@@ -385,22 +634,21 @@ elif opcion == "Gestionar Fotos":
     st.markdown("""<p style='color: #666; margin-bottom: 2rem;'>Agregue o visualice fotos de las propiedades</p>""", unsafe_allow_html=True)
     
     # Seleccionar propiedad
-    if not st.session_state.df.empty:
+    propiedades = obtener_propiedades()
+    
+    if not propiedades['datos'].empty:
         # Crear lista de propiedades para el selector
-        propiedades = st.session_state.df.apply(
-            lambda x: f"{x['RUT']} - {x['Propietario']} - {x['Dirección']}", 
-            axis=1
-        ).tolist()
+        propiedades_lista = [f"{propiedad['RUT']} - {propiedad['Propietario']} - {propiedad['Dirección']}" for propiedad in propiedades['datos']]
         
         propiedad_seleccionada = st.selectbox(
             "Seleccione una propiedad:",
-            propiedades,
+            propiedades_lista,
             index=0
         )
         
         # Obtener el índice de la propiedad seleccionada
-        idx = propiedades.index(propiedad_seleccionada)
-        propiedad = st.session_state.df.iloc[idx]
+        idx = propiedades_lista.index(propiedad_seleccionada)
+        propiedad = propiedades['datos'][idx]
         
         st.markdown("### Información de la Propiedad")
         col1, col2 = st.columns(2)
@@ -409,7 +657,7 @@ elif opcion == "Gestionar Fotos":
             st.write(f"**RUT:** {propiedad['RUT']}")
         with col2:
             st.write(f"**Dirección:** {propiedad['Dirección']}")
-            st.write(f"**ROL:** {propiedad['ROL']}")
+            st.write(f"**ROL Propiedad:** {propiedad['ROL Propiedad']}")
         
         st.markdown("---")
         st.markdown("### Fotos de la Propiedad")
@@ -428,7 +676,7 @@ elif opcion == "Gestionar Fotos":
                         try:
                             os.remove(foto)
                             fotos.pop(i)
-                            st.session_state.df.at[idx, 'Fotos'] = fotos
+                            guardar_fotos(propiedad['id'], fotos)
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error al eliminar la foto: {e}")
@@ -445,18 +693,43 @@ elif opcion == "Gestionar Fotos":
         
         if uploaded_files:
             if st.button("Guardar Fotos"):
+                nuevas_fotos = []
                 for uploaded_file in uploaded_files:
-                    # Guardar el archivo en la carpeta uploads
-                    file_path = os.path.join('uploads', f"{propiedad['RUT']}_{int(time.time())}_{uploaded_file.name}")
-                    with open(file_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
-                    
-                    # Agregar la ruta a la lista de fotos
-                    if not isinstance(propiedad['Fotos'], list):
-                        st.session_state.df.at[idx, 'Fotos'] = []
-                    st.session_state.df.at[idx, 'Fotos'].append(file_path)
+                    try:
+                        # Crear directorio de uploads si no existe
+                        os.makedirs('uploads', exist_ok=True)
+                        # Generar nombre de archivo único
+                        timestamp = int(time.time())
+                        file_extension = os.path.splitext(uploaded_file.name)[1]
+                        file_name = f"{propiedad['RUT']}_{timestamp}{file_extension}"
+                        file_path = os.path.join('uploads', file_name)
+                        
+                        # Guardar el archivo
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        
+                        # Agregar a la lista de nuevas fotos
+                        nuevas_fotos.append(file_path)
+                        
+                    except Exception as e:
+                        st.error(f"Error al procesar la foto {uploaded_file.name}: {e}")
                 
-                st.success("¡Fotos guardadas correctamente!")
-                st.rerun()
+                if nuevas_fotos:
+                    # Obtener fotos existentes
+                    fotos_existentes = propiedad.get('Fotos', [])
+                    if not isinstance(fotos_existentes, list):
+                        fotos_existentes = []
+                    
+                    # Combinar fotos existentes con nuevas
+                    todas_las_fotos = fotos_existentes + nuevas_fotos
+                    
+                    # Guardar en la base de datos
+                    if guardar_fotos(propiedad['id'], todas_las_fotos):
+                        st.success(f"¡{len(nuevas_fotos)} fotos guardadas correctamente!")
+                        st.rerun()
+                    else:
+                        st.error("Error al guardar las fotos en la base de datos.")
+                else:
+                    st.warning("No se pudo guardar ninguna foto.")
     else:
         st.info("No hay propiedades registradas para gestionar fotos.")
