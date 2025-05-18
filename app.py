@@ -382,7 +382,6 @@ if opcion == "Agregar Propiedad":
                     max_value=datetime.now().year,
                     value=datetime.now().year
                 )
-                linea_construccion = st.text_input("Línea de Construcción")
                 expediente = st.text_input("Expediente DOM")
         
         # Sección 3: Clasificación y Fiscalización
@@ -408,7 +407,39 @@ if opcion == "Agregar Propiedad":
                     help="Seleccione el estado de la patente"
                 )
         
-        # Sección 4: Ubicación
+        # Sección 4: Línea de Construcción Detallada
+        with st.expander("🏗️ Detalles de la Construcción", expanded=False):
+            st.markdown("**Línea de Construcción**")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                materialidad = st.selectbox(
+                    "Materialidad",
+                    options=["", "Hormigón", "Acero", "Madera", "Mixto", "Otro"],
+                    index=0,
+                    help="Seleccione el material principal de construcción"
+                )
+            
+            with col2:
+                año_construccion_linea = st.selectbox(
+                    "Año",
+                    options=[""] + list(range(datetime.now().year, 1800, -1)),
+                    index=0,
+                    help="Año de la construcción"
+                )
+            
+            with col3:
+                m2_construccion = st.selectbox(
+                    "M²",
+                    options=[""] + [f"{i} m²" for i in range(10, 1001, 10)],
+                    index=0,
+                    help="Metros cuadrados construidos"
+                )
+            
+            # Combinar los valores seleccionados en un solo string
+            linea_construccion = f"{materialidad} {año_construccion_linea} {m2_construccion}".strip()
+        
+        # Sección 5: Ubicación
         with st.expander("📍 Ubicación en Mapa", expanded=False):
             coordenadas = st.text_input(
                 "Coordenadas (Lat, Long)", 
@@ -430,7 +461,7 @@ if opcion == "Agregar Propiedad":
                 else:
                     st.error("❌ Formato de coordenadas inválido. Use: latitud, longitud")
         
-        # Sección 5: Observaciones
+        # Sección 6: Observaciones
         with st.expander("📝 Observaciones Adicionales", expanded=False):
             observaciones = st.text_area("Ingrese cualquier observación adicional", height=100)
         
