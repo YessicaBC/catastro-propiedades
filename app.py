@@ -734,7 +734,7 @@ elif opcion == "Gestionar Fotos":
     # Seleccionar propiedad
     propiedades = obtener_propiedades()
     
-    if not propiedades['datos'].empty:
+    if 'datos' in propiedades and propiedades['datos']:
         # Crear lista de propiedades para el selector
         propiedades_lista = [f"{propiedad['RUT']} - {propiedad['Propietario']} - {propiedad['Dirección']}" for propiedad in propiedades['datos']]
         
@@ -831,3 +831,4 @@ elif opcion == "Gestionar Fotos":
                     st.warning("No se pudo guardar ninguna foto.")
     else:
         st.info("No hay propiedades registradas para gestionar fotos.")
+
