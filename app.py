@@ -438,17 +438,22 @@ if opcion == "Agregar Propiedad":
                     )
                 
                 with col3:
-                    m2 = st.selectbox(
+                    # Usar number_input con el mismo formato que M² Construidos
+                    m2 = st.number_input(
                         f"M² {i}",
-                        options=[""] + [f"{x} m²" for x in range(10, 1001, 10)],
-                        index=0,
+                        min_value=0.0,
+                        step=0.01,
+                        format="%.2f",
+                        value=None,
                         key=f"m2_{i}",
                         help=f"Metros cuadrados construidos para la línea {i}"
                     )
                 
                 # Agregar a la lista si al menos un campo tiene valor
-                if materialidad or año or m2 != "":
-                    linea = f"{materialidad} {año} {m2}".strip()
+                if materialidad or año or m2 is not None:
+                    # Formatear M² con dos decimales si tiene valor
+                    m2_display = f"{m2:.2f} m²" if m2 is not None else ""
+                    linea = f"{materialidad} {año} {m2_display}".strip()
                     lineas_construccion.append(linea)
                 
                 # Agregar un pequeño espacio entre líneas
