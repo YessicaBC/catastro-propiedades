@@ -219,6 +219,90 @@ if 'db_initialized' not in st.session_state:
     else:
         st.error("No se pudo inicializar la base de datos. La aplicación podría no funcionar correctamente.")
 
+# Configuración de la barra lateral
+with st.sidebar:
+    st.image("https://www.municipalidaddesantiago.cl/wp-content/uploads/2021/12/logo-municipalidad-santiago.png", width=200)
+    st.title("Catastro Comunal")
+    st.markdown("---")
+    opcion = st.radio(
+        "Menú Principal",
+        ["Inicio", "Agregar Propiedad", "Ver/Editar Propiedades", "Reportes"],
+        index=0
+    )
+    st.markdown("---")
+    st.markdown("### Acerca de")
+    st.markdown("Sistema de Catastro de la Comuna de Independencia")
+    st.markdown("Versión 1.0.0")
+
+# Página de inicio
+if opcion == "Inicio":
+    st.title("Bienvenido al Sistema de Catastro")
+    st.markdown("---")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 📊 Estadísticas Rápidas")
+        
+        # Obtener estadísticas de la base de datos
+        conn = get_db_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                
+                # Total de propiedades
+                cursor.execute("SELECT COUNT(*) FROM propiedades")
+                total_propiedades = cursor.fetchone()[0]
+                
+                # Propiedades por tipo de destino SII
+                cursor.execute("""
+                    SELECT destino_sii, COUNT(*) as cantidad 
+                    FROM propiedades 
+                    WHERE destino_sii IS NOT NULL AND destino_sii != ''
+                    GROUP BY destino_sii
+                    ORDER BY cantidad DESC
+                """)
+                destinos = cursor.fetchall()
+                
+                # Últimas propiedades agregadas
+                cursor.execute("""
+                    SELECT propietario, direccion, fecha_creacion 
+                    FROM propiedades 
+                    ORDER BY fecha_creacion DESC 
+                    LIMIT 5
+                """)
+                ultimas_propiedades = cursor.fetchall()
+                
+            except Error as e:
+                st.error(f"Error al obtener estadísticas: {e}")
+            finally:
+                conn.close()
+        
+        # Mostrar tarjetas con estadísticas
+        st.metric("Total de Propiedades", total_propiedades)
+        
+        if destinos:
+            st.markdown("#### Propiedades por Destino SII")
+            for destino, cantidad in destinos:
+                st.markdown(f"- **{destino}**: {cantidad} propiedades")
+    
+    with col2:
+        st.markdown("### 📍 Mapa de la Comuna")
+        # Mapa centrado en Independencia
+        m = crear_mapa()
+        folium_static(m, width=400, height=400)
+    
+    st.markdown("---")
+    st.markdown("### Últimas Propiedades Agregadas")
+    
+    if 'ultimas_propiedades' in locals() and ultimas_propiedades:
+        for prop in ultimas_propiedades:
+            with st.expander(f"{prop[0]} - {prop[1]}"):
+                st.write(f"**Fecha de registro:** {prop[2]}")
+                st.button("Ver detalles", key=f"ver_{prop[0]}")
+    else:
+        st.info("No hay propiedades registradas aún.")
+
 # Configuración de estilos personalizados
 st.markdown("""
 <style>
