@@ -11,6 +11,11 @@ import json
 from pathlib import Path
 import sqlite3
 from sqlite3 import Error
+import io
+
+# Inicializar estado de la sesión
+if 'opcion_seleccionada' not in st.session_state:
+    st.session_state.opcion_seleccionada = "🏠 Inicio"
 
 # Configuración de la página
 st.set_page_config(
@@ -340,6 +345,22 @@ def guardar_fotos(propiedad_id, fotos):
             conn.close()
     return False
 
+def obtener_total_propiedades():
+    """Obtiene el número total de propiedades registradas"""
+    conn = get_db_connection()
+    if conn is not None:
+        try:
+            cursor = conn.cursor()
+            cursor.execute('SELECT COUNT(*) FROM propiedades')
+            total = cursor.fetchone()[0]
+            return total
+        except sqlite3.Error as e:
+            st.error(f"Error al obtener el total de propiedades: {e}")
+            return 0
+        finally:
+            conn.close()
+    return 0
+
 def obtener_propiedades(pagina=1, por_pagina=10, filtros=None):
     """Obtiene propiedades paginadas con filtros opcionales"""
     conn = get_db_connection()
@@ -480,95 +501,6 @@ def crear_mapa(coordenadas=None, zoom_start=13):
     m = folium.Map(location=location, zoom_start=zoom_start, tiles='OpenStreetMap')
     return m
 
-# Contenedor principal con padding
-with st.container():
-    # Título principal con ícono
-    st.markdown("""
-        <div class='card' style='margin-bottom: 2rem;'>
-            <div style='display: flex; align-items: center;'>
-                <span style='font-size: 2rem; margin-right: 0.75rem;'>🏠</span>
-                <div>
-                    <h1 style='margin: 0;'>Catastro Comunal de Independencia</h1>
-                    <p class='subheader' style='margin: 0.25rem 0 0 0;'>Sistema de gestión de propiedades y fiscalización municipal</p>
-                </div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Mapa de la comuna de Independencia
-    st.markdown("""
-        <div class='card' style='margin-bottom: 2rem;'>
-            <h2>🗺️ Mapa de la Comuna de Independencia</h2>
-            <p class='subheader'>Visualización geográfica del territorio comunal y puntos de interés</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Crear y mostrar el mapa
-    m = crear_mapa(zoom_start=14)
-    
-    # Agregar marcador para el municipio
-    folium.Marker(
-        [-33.4172, -70.6506],
-        popup='<b>Municipalidad de Independencia</b><br>Av. Independencia 405',
-        tooltip='Municipalidad',
-        icon=folium.Icon(color='blue', icon='info-sign')
-    ).add_to(m)
-    
-    # Agregar algunos puntos de referencia importantes
-    puntos_interes = [
-        {"nombre": "Hospital San José", "coords": [-33.4231, -70.6534]},
-        {"nombre": "Plaza Chacabuco", "coords": [-33.4165, -70.6617]},
-        {"nombre": "Estación Hospitales", "coords": [-33.4262, -70.6535]},
-        {"nombre": "Parque Los Reyes", "coords": [-33.4250, -70.6770]},
-        {"nombre": "Mall Barrio Independencia", "coords": [-33.4190, -70.6668]}
-    ]
-    
-    for punto in puntos_interes:
-        folium.Marker(
-            punto["coords"],
-            popup=f'<b>{punto["nombre"]}</b>',
-            tooltip=punto["nombre"],
-            icon=folium.Icon(color='green', icon='map-marker')
-        ).add_to(m)
-    
-    # Agregar capa de polígono de la comuna (coordenadas aproximadas)
-    comuna_coords = [
-        [-33.4033, -70.6650],
-        [-33.4035, -70.6450],
-        [-33.4230, -70.6350],
-        [-33.4380, -70.6450],
-        [-33.4380, -70.6850],
-        [-33.4033, -70.6650]
-    ]
-    
-    folium.Polygon(
-        locations=comuna_coords,
-        color='#3186cc',
-        weight=2,
-        fill=True,
-        fill_color='#3186cc',
-        fill_opacity=0.2,
-        popup='Comuna de Independencia'
-    ).add_to(m)
-    
-    # Agregar control de capas
-    folium.LayerControl().add_to(m)
-    
-    # Mostrar el mapa
-    folium_static(m, width=1200, height=600)
-    
-    # Información adicional
-    st.markdown("""
-        <div class='card' style='margin-top: 2rem;'>
-            <h3>📌 Acerca de Independencia</h3>
-            <p>La comuna de Independencia se ubica en el sector norte de la ciudad de Santiago, 
-            limitando con las comunas de Recoleta, Santiago, Renca, Conchalí y Huechuraba.</p>
-            <p>Superficie: 7.3 km²<br>
-            Población: Aprox. 110,000 habitantes<br>
-            Densidad: 15,068 hab/km²</p>
-        </div>
-    """, unsafe_allow_html=True)
-
 # Menú de navegación
 with st.sidebar:
     st.markdown("""
@@ -588,12 +520,163 @@ with st.sidebar:
         ("📊", "Exportar Datos")
     ]
     
-    # Mostrar las opciones como botones de radio
-    opcion_seleccionada = st.radio(
-        "Seleccione una opción",
-        options=[f"{icono} {nombre}" for icono, nombre in opciones],
-        label_visibility="collapsed"
-    )
+    # Mostrar las opciones como botones
+    for icono, nombre in opciones:
+        opcion = f"{icono} {nombre}"
+        if st.button(opcion, key=f"menu_{nombre}", use_container_width=True):
+            st.session_state.opcion_seleccionada = opcion
+    
+    # Usar el valor de la sesión
+    opcion_seleccionada = st.session_state.opcion_seleccionada
+    
+    # Obtener solo el nombre de la opción seleccionada (sin el ícono)
+    opcion = next((nombre for icono, nombre in opciones if icono in opcion_seleccionada), opcion_seleccionada)
+
+# Contenido principal basado en la opción seleccionada
+if opcion == "Inicio":
+    # Contenedor principal con padding
+    with st.container():
+        # Título principal con ícono
+        st.markdown("""
+            <div style='width: 100%; text-align: center; margin: 0; padding: 1rem 0.5rem;'>
+                <div style='color: #1e3d59; font-size: 1.8rem; font-weight: 600; white-space: nowrap; overflow: visible;'>
+                    🏘️ Bienvenido al Catastro Comunal de Independencia
+                </div>
+                <div style='height: 4px; background: linear-gradient(90deg, #1e88e5, #64b5f6); margin: 1rem auto 0; width: 150px; border-radius: 2px;'></div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Subtítulo descriptivo
+        st.markdown("""
+            <div style='text-align: center; margin: 0 auto 2rem; max-width: 800px; padding: 0 1rem;'>
+                <p style='color: #4a4a4a; font-size: 1.05rem; line-height: 1.6; margin: 0;'>
+                    Sistema de gestión de propiedades de la comuna de Independencia. 
+                    Registre, consulte y administre la información catastral de manera eficiente.
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Crear y mostrar el mapa
+        m = crear_mapa(zoom_start=14)
+        
+        # Agregar marcador para el municipio
+        folium.Marker(
+            [-33.4172, -70.6506],
+            popup='<b>Municipalidad de Independencia</b><br>Av. Independencia 405',
+            tooltip='Municipalidad',
+            icon=folium.Icon(color='blue', icon='info-sign')
+        ).add_to(m)
+        
+        # Agregar algunos puntos de referencia importantes
+        puntos_interes = [
+            {"nombre": "Hospital San José", "coords": [-33.4231, -70.6534]},
+            {"nombre": "Plaza Chacabuco", "coords": [-33.4165, -70.6617]},
+            {"nombre": "Estación Hospitales", "coords": [-33.4262, -70.6535]},
+            {"nombre": "Parque Los Reyes", "coords": [-33.4250, -70.6770]},
+            {"nombre": "Mall Barrio Independencia", "coords": [-33.4190, -70.6668]}
+        ]
+        
+        for punto in puntos_interes:
+            folium.Marker(
+                punto["coords"],
+                popup=f'<b>{punto["nombre"]}</b>',
+                tooltip=punto["nombre"],
+                icon=folium.Icon(color='green', icon='map-marker')
+            ).add_to(m)
+        
+        # Agregar capa de polígono de la comuna (coordenadas aproximadas)
+        comuna_coords = [
+            [-33.4033, -70.6650],
+            [-33.4035, -70.6450],
+            [-33.4230, -70.6350],
+            [-33.4380, -70.6450],
+            [-33.4380, -70.6850],
+            [-33.4033, -70.6650]
+        ]
+        
+        folium.Polygon(
+            locations=comuna_coords,
+            color='#3186cc',
+            weight=2,
+            fill=True,
+            fill_color='#3186cc',
+            fill_opacity=0.2,
+            popup='Comuna de Independencia'
+        ).add_to(m)
+        
+        # Agregar control de capas
+        folium.LayerControl().add_to(m)
+        
+        # Contenedor principal para el contenido de la página de inicio
+        st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+        
+        # Sección de estadísticas y mapa
+        col1, col2 = st.columns([1, 2.5], gap="large")
+        
+        with col1:
+            st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
+            total_propiedades = obtener_total_propiedades()
+            st.markdown(f"""
+                <div style='
+                    background: linear-gradient(135deg, #1e88e5, #64b5f6);
+                    padding: 1.75rem 1.5rem;
+                    border-radius: 12px;
+                    color: white;
+                    text-align: center;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    transition: transform 0.2s;
+                    height: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                '>
+                    <h3 style='margin: 0 0 12px 0; font-size: 1.1rem; font-weight: 500; color: rgba(255, 255, 255, 0.95);'>
+                        Propiedades Registradas
+                    </h3>
+                    <p style='font-size: 2.75rem; font-weight: 700; margin: 0; line-height: 1.2;'>{total_propiedades}</p>
+                    <p style='font-size: 0.9rem; margin: 8px 0 0 0; opacity: 0.9;'>
+                        en el sistema catastral
+                    </p>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            # Tarjeta para el mapa con sombra y borde sutil
+            st.markdown("""
+                <div style='
+                    border-radius: 12px;
+                    overflow: hidden;
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+                    border: 1px solid #e0e0e0;
+                    margin-bottom: 1.5rem;
+                '>
+            """, unsafe_allow_html=True)
+            
+            # Mostrar el mapa
+            folium_static(m, width=800, height=500)
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Espaciado final
+        st.markdown("<div style='margin-bottom: 2rem;'></div>", unsafe_allow_html=True)
+
+
+    st.markdown("""
+        <div style='text-align: center; margin-bottom: 2rem;'>
+            <h2 style='color: #1e3d59; margin-bottom: 0.5rem;'>Menú Principal</h2>
+            <div style='height: 3px; background: linear-gradient(90deg, #1e88e5, #64b5f6); margin: 0 auto 1.5rem; width: 50%; border-radius: 3px;'></div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Opciones del menú con sus respectivos íconos
+    opciones = [
+        ("🏠", "Inicio"),
+        ("📝", "Agregar Propiedad"),
+        ("📋", "Ver/Editar Propiedades"),
+        ("🔍", "Buscar Propiedades"),
+        ("🖼️", "Gestionar Fotos"),
+        ("📊", "Exportar Datos")
+    ]
     
     # Obtener solo el nombre de la opción seleccionada (sin el ícono)
     opcion = next((nombre for icono, nombre in opciones if icono in opcion_seleccionada), opcion_seleccionada)
@@ -1749,7 +1832,7 @@ elif opcion == "Gestionar Fotos":
                         """, unsafe_allow_html=True)
                     
                     with col2:
-                        if st.button("×", key=f"del_{i}", 
+                        if st.button("×", key=f"del_photo_{i}", 
                                    help="Eliminar esta foto",
                                    use_container_width=True,
                                    type="secondary"):
@@ -1872,4 +1955,86 @@ elif opcion == "Gestionar Fotos":
                 st.session_state.file_uploader_key = str(time.time())
     else:
         st.info("No hay propiedades registradas para gestionar fotos.")
+
+elif opcion == "Exportar Datos":
+    st.markdown("""
+        <div class='card' style='margin-bottom: 2rem;'>
+            <div style='display: flex; align-items: center;'>
+                <span style='font-size: 2rem; margin-right: 0.75rem;'>📊</span>
+                <div>
+                    <h2 style='margin: 0;'>Exportar Datos</h2>
+                    <p class='subheader' style='margin: 0.25rem 0 0 0;'>Exporte los datos de las propiedades a diferentes formatos</p>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Obtener todas las propiedades
+    propiedades = obtener_propiedades(por_pagina=1000)  # Número grande para obtener todas las propiedades
+    
+    if 'datos' in propiedades and propiedades['datos']:
+        # Convertir a DataFrame para facilitar la exportación
+        df = pd.DataFrame(propiedades['datos'])
+        
+        # Mostrar vista previa de los datos
+        st.subheader("Vista previa de los datos a exportar")
+        st.dataframe(df.head())
+        
+        # Opciones de exportación
+        st.subheader("Opciones de exportación")
+        
+        # Exportar a Excel
+        if st.button("💾 Exportar a Excel", use_container_width=True):
+            try:
+                # Crear un archivo Excel en memoria
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    df.to_excel(writer, index=False, sheet_name='Propiedades')
+                
+                # Crear un botón de descarga
+                st.download_button(
+                    label="⬇️ Descargar archivo Excel",
+                    data=output.getvalue(),
+                    file_name='propiedades_exportadas.xlsx',
+                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Error al exportar a Excel: {str(e)}")
+        
+        # Exportar a CSV
+        if st.button("📄 Exportar a CSV", use_container_width=True):
+            try:
+                # Crear un archivo CSV en memoria
+                csv = df.to_csv(index=False, encoding='utf-8-sig')
+                
+                # Crear un botón de descarga
+                st.download_button(
+                    label="⬇️ Descargar archivo CSV",
+                    data=csv,
+                    file_name='propiedades_exportadas.csv',
+                    mime='text/csv',
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Error al exportar a CSV: {str(e)}")
+        
+        # Exportar a JSON
+        if st.button("🔤 Exportar a JSON", use_container_width=True):
+            try:
+                # Convertir a JSON
+                json_data = df.to_json(orient='records', force_ascii=False, indent=4)
+                
+                # Crear un botón de descarga
+                st.download_button(
+                    label="⬇️ Descargar archivo JSON",
+                    data=json_data,
+                    file_name='propiedades_exportadas.json',
+                    mime='application/json',
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Error al exportar a JSON: {str(e)}")
+    else:
+        st.info("No hay propiedades registradas para exportar.")
 
