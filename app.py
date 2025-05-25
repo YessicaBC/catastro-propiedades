@@ -12,8 +12,18 @@ from pathlib import Path
 import io
 import sqlite3
 from sqlite3 import Error
-from config_manager import cargar_configuracion, actualizar_configuracion, obtener_valor
-from db_utils import init_db, get_db_connection
+import sys
+
+# Asegurar que el directorio actual esté en el PATH de Python
+sys.path.append(str(Path(__file__).parent))
+
+# Importar módulos locales
+try:
+    from config_manager import cargar_configuracion, actualizar_configuracion, obtener_valor
+    from db_utils import init_db, get_db_connection
+except ImportError as e:
+    st.error(f"Error al importar módulos: {e}")
+    st.stop()
 
 # Inicializar estado de la sesión
 if 'opcion_seleccionada' not in st.session_state:
