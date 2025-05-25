@@ -1,4 +1,15 @@
+import os
+import sys
+from pathlib import Path
+
+# Asegurarse de que el directorio actual esté en el PATH
+current_dir = Path(__file__).parent
+sys.path.append(str(current_dir))
+
+# Ahora importamos streamlit después de configurar el PATH
 import streamlit as st
+
+# Importar el resto de dependencias
 import folium
 from streamlit_folium import folium_static, st_folium
 import folium.plugins
@@ -6,16 +17,10 @@ import plotly.graph_objects as go
 import time
 import pandas as pd
 from datetime import datetime
-import os
 import json
-from pathlib import Path
 import io
 import sqlite3
 from sqlite3 import Error
-import sys
-
-# Asegurar que el directorio actual esté en el PATH de Python
-sys.path.append(str(Path(__file__).parent))
 
 # Importar módulos locales
 try:
@@ -2042,5 +2047,3 @@ elif opcion == "Exportar Datos":
                 st.error(f"Error al exportar a JSON: {str(e)}")
     else:
         st.info("No hay propiedades registradas para exportar.")
-
-
