@@ -9,13 +9,28 @@ from datetime import datetime
 import os
 import json
 from pathlib import Path
+import io
 import sqlite3
 from sqlite3 import Error
-import io
+from config_manager import cargar_configuracion, actualizar_configuracion, obtener_valor
+from db_utils import init_db, get_db_connection
 
 # Inicializar estado de la sesión
 if 'opcion_seleccionada' not in st.session_state:
     st.session_state.opcion_seleccionada = "🏠 Inicio"
+    
+# Verificar y crear backup si es necesario
+if os.environ.get('STREAMLIT_SERVER_RUNNING', 'false').lower() == 'true':
+    from database_utils import programar_backup_diario
+    backup_path = programar_backup_diario()
+    if backup_path and os.environ.get('DEBUG', 'false').lower() == 'true':
+        print(f"Backup creado en: {backup_path}")
+
+# Cargar configuración
+config = cargar_configuracion()
+
+# Inicializar la base de datos
+init_db()
 
 # Configuración de la página
 st.set_page_config(
@@ -23,6 +38,26 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Aplicar tema
+if config.get('tema') == 'oscuro':
+    st.markdown("""
+        <style>
+            .main {
+                background-color: #0E1117;
+                color: #FAFAFA;
+            }
+            .stButton>button {
+                border: 1px solid #4CAF50;
+                color: white;
+                background-color: #2E7D32;
+            }
+            .stButton>button:hover {
+                background-color: #1B5E20;
+                border-color: #1B5E20;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
 # Estilos CSS unificados
 st.markdown("""
@@ -216,76 +251,7 @@ UPLOAD_FOLDER = 'uploads'
 # Crear directorios necesarios
 Path(UPLOAD_FOLDER).mkdir(exist_ok=True)
 
-def get_db_connection():
-    """Crea una conexión a la base de datos SQLite"""
-    conn = None
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        # Habilitar claves foráneas
-        conn.execute("PRAGMA foreign_keys = ON")
-        return conn
-    except Error as e:
-        st.error(f"Error al conectar a la base de datos: {e}")
-        return None
-
-def init_db():
-    """Inicializa la base de datos con las tablas necesarias"""
-    conn = get_db_connection()
-    if conn is not None:
-        try:
-            cursor = conn.cursor()
-            
-            # Tabla de propiedades
-            cursor.execute('''
-            CREATE TABLE IF NOT EXISTS propiedades (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                rut TEXT NOT NULL,
-                propietario TEXT NOT NULL,
-                direccion TEXT NOT NULL,
-                rol_propiedad TEXT NOT NULL,
-                avaluo_total REAL NOT NULL,
-                destino_sii TEXT,
-                destino_dom TEXT,
-                patente_comercial TEXT,
-                num_contacto TEXT,
-                coordenadas TEXT,
-                fiscalizacion_dom TEXT,
-                m2_terreno REAL,
-                m2_construidos REAL,
-                linea_construccion TEXT,
-                ano_construccion INTEGER,
-                expediente_dom TEXT,
-                observaciones TEXT,
-                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(rut, rol_propiedad)
-            )
-            ''')
-            
-            # Tabla de fotos
-            cursor.execute('''
-            CREATE TABLE IF NOT EXISTS fotos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                propiedad_id INTEGER,
-                ruta_archivo TEXT NOT NULL,
-                fecha_subida TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (propiedad_id) REFERENCES propiedades (id) ON DELETE CASCADE
-            )
-            ''')
-            
-            # Crear índices para búsquedas frecuentes
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_propiedades_rut ON propiedades(rut)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_propiedades_rol ON propiedades(rol_propiedad)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_fotos_propiedad ON fotos(propiedad_id)')
-            
-            conn.commit()
-            return True
-        except Error as e:
-            st.error(f"Error al inicializar la base de datos: {e}")
-            return False
-        finally:
-            conn.close()
-    return False
+# Las funciones de base de datos han sido movidas a db_utils.py
 
 def guardar_propiedad(propiedad):
     """Guarda una nueva propiedad en la base de datos"""
@@ -681,12 +647,41 @@ if opcion == "Inicio":
     # Obtener solo el nombre de la opción seleccionada (sin el ícono)
     opcion = next((nombre for icono, nombre in opciones if icono in opcion_seleccionada), opcion_seleccionada)
     
+    # Panel de configuración
+    with st.expander("⚙️ Configuración", expanded=False):
+        # Selector de tema
+        tema_actual = config.get('tema', 'claro')
+        nuevo_tema = st.selectbox(
+            "Tema de la aplicación",
+            ["claro", "oscuro"],
+            index=0 if tema_actual == 'claro' else 1,
+            key="selector_tema"
+        )
+        
+        # Selector de items por página
+        items_por_pagina = st.number_input(
+            "Ítems por página",
+            min_value=5,
+            max_value=100,
+            value=config.get('items_por_pagina', 10),
+            step=5
+        )
+        
+        # Botón para guardar configuración
+        if st.button("💾 Guardar configuración", use_container_width=True):
+            actualizar_configuracion({
+                'tema': nuevo_tema,
+                'items_por_pagina': items_por_pagina
+            })
+            st.success("Configuración guardada correctamente.")
+            st.rerun()
+    
     # Pie de página del menú
     st.markdown("---")
-    st.markdown("""
-        <div style='text-align: center; margin-top: 2rem;'>
+    st.markdown(f"""
+        <div style='text-align: center; margin-top: 1rem;'>
             <p style='font-size: 0.8rem; color: #666; margin-bottom: 0.5rem;'>Sistema de Catastro Municipal</p>
-            <p style='font-size: 0.7rem; color: #999;'>Versión 1.0.0</p>
+            <p style='font-size: 0.7rem; color: #999;'>Versión 1.0.0 | Tema: {tema_actual.capitalize()}</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -2037,4 +2032,5 @@ elif opcion == "Exportar Datos":
                 st.error(f"Error al exportar a JSON: {str(e)}")
     else:
         st.info("No hay propiedades registradas para exportar.")
+
 
