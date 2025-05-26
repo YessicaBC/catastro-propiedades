@@ -3,7 +3,8 @@ import os
 from pathlib import Path
 
 # Agregar el directorio actual al path para que Python encuentre los módulos
-sys.path.append(str(Path(__file__).parent))
+current_dir = Path(__file__).parent
+sys.path.append(str(current_dir))
 
 import streamlit as st
 import folium
@@ -19,7 +20,16 @@ from sqlite3 import Error
 import io
 
 # Importar funciones de la base de datos
-from db_utils import init_db, get_db_connection
+try:
+    from db_utils import init_db, get_db_connection
+except ImportError:
+    # Si falla, intentar con la ruta absoluta
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("db_utils", str(current_dir / "db_utils.py"))
+    db_utils = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(db_utils)
+    init_db = db_utils.init_db
+    get_db_connection = db_utils.get_db_connection
 
 # Inicializar la base de datos al inicio
 if not init_db():
