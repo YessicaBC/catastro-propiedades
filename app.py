@@ -971,15 +971,33 @@ if opcion == "Agregar Propiedad":
     """, unsafe_allow_html=True)
     
     with st.form("formulario_propiedad"):
+        # Verificar si estamos en modo edición
+        modo_edicion = 'propiedad_editar' in st.session_state and st.session_state['propiedad_editar'] is not None
+        
+        # Cargar datos de la propiedad si estamos en modo edición
+        if modo_edicion:
+            propiedad = st.session_state['propiedad_editar']
+            st.markdown("### ✏️ Editar Propiedad")
+            st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        
         # Sección 1: Información Básica
         with st.expander("📋 Información Básica", expanded=True):
+            if modo_edicion:
+                # Mostrar ID de la propiedad en modo edición
+                st.info(f"🆔 ID de la propiedad: {st.session_state['propiedad_editar'].get('id', 'N/A')}")
+                
             col1, col2 = st.columns([1, 2])
             
             # Columna 1
             with col1:
                 # Validación de RUT en tiempo real
                 rut_container = st.container()
-                rut = rut_container.text_input("RUT Propietario", key="rut_input", help="Formato: 12345678-9")
+                rut = rut_container.text_input(
+                    "RUT Propietario", 
+                    value=propiedad.get('RUT', '') if modo_edicion else '',
+                    key="rut_input", 
+                    help="Formato: 12345678-9"
+                )
                 if rut:
                     is_rut_valid = validar_rut(rut)
                     rut_container.markdown(
@@ -999,7 +1017,11 @@ if opcion == "Agregar Propiedad":
                 
                 # Campo de propietario con validación
                 propietario_container = st.container()
-                propietario = propietario_container.text_input("Propietario", key="propietario_input")
+                propietario = propietario_container.text_input(
+                    "Propietario", 
+                    value=propiedad.get('Propietario', '') if modo_edicion else '',
+                    key="propietario_input"
+                )
                 if propietario:
                     propietario_container.markdown(
                         f"""
@@ -1016,7 +1038,12 @@ if opcion == "Agregar Propiedad":
             
                 # Campo de número de contacto con validación
                 num_contacto_container = st.container()
-                num_contacto = num_contacto_container.text_input("N° de contacto", key="num_contacto_input", help="Número de teléfono de contacto")
+                num_contacto = num_contacto_container.text_input(
+                    "N° de contacto", 
+                    value=propiedad.get('N° de contacto', '') if modo_edicion else '',
+                    key="num_contacto_input", 
+                    help="Número de teléfono de contacto"
+                )
                 if num_contacto:
                     num_contacto_container.markdown(
                         f"""
@@ -1033,7 +1060,12 @@ if opcion == "Agregar Propiedad":
             
                 # Campo de dirección con validación
                 direccion_container = st.container()
-                direccion = direccion_container.text_area("Dirección", key="direccion_input", height=70)
+                direccion = direccion_container.text_area(
+                    "Dirección", 
+                    value=propiedad.get('Dirección', '') if modo_edicion else '',
+                    key="direccion_input", 
+                    height=70
+                )
                 if direccion:
                     direccion_container.markdown(
                         f"""
@@ -1064,7 +1096,11 @@ if opcion == "Agregar Propiedad":
             with col1:
                 # Campo ROL con validación
                 rol_container = st.container()
-                rol = rol_container.text_input("ROL Propiedad", key="rol_input")
+                rol = rol_container.text_input(
+                    "ROL Propiedad", 
+                    value=propiedad.get('ROL Propiedad', '') if modo_edicion else '',
+                    key="rol_input"
+                )
                 if rol:
                     rol_container.markdown(
                         f"""
@@ -1081,7 +1117,14 @@ if opcion == "Agregar Propiedad":
                 
                 # Campo Avalúo con validación
                 avaluo_container = st.container()
-                avaluo = avaluo_container.number_input("Avalúo Total", min_value=0, step=1000, format="%d", key="avaluo_input")
+                avaluo = avaluo_container.number_input(
+                    "Avalúo Total", 
+                    min_value=0, 
+                    step=1000, 
+                    format="%d", 
+                    value=int(propiedad.get('Avalúo Total', 0)) if modo_edicion and propiedad.get('Avalúo Total') else 0,
+                    key="avaluo_input"
+                )
                 avaluo_container.markdown(
                     f"""
                     <style>
@@ -1096,7 +1139,13 @@ if opcion == "Agregar Propiedad":
                 
                 # Campo M² Terreno con validación
                 m2_terreno_container = st.container()
-                m2_terreno = m2_terreno_container.number_input("M² Terreno", min_value=0.0, step=0.01, key="m2_terreno_input")
+                m2_terreno = m2_terreno_container.number_input(
+                    "M² Terreno", 
+                    min_value=0.0, 
+                    step=0.01, 
+                    value=float(propiedad.get('M2 Terreno', 0.0)) if modo_edicion and propiedad.get('M2 Terreno') else 0.0,
+                    key="m2_terreno_input"
+                )
                 m2_terreno_container.markdown(
                     f"""
                     <style>
@@ -1111,7 +1160,13 @@ if opcion == "Agregar Propiedad":
                 
                 # Campo M² Construidos con validación
                 m2_construidos_container = st.container()
-                m2_construidos = m2_construidos_container.number_input("M² Construidos", min_value=0.0, step=0.01, key="m2_construidos_input")
+                m2_construidos = m2_construidos_container.number_input(
+                    "M² Construidos", 
+                    min_value=0.0, 
+                    step=0.01, 
+                    value=float(propiedad.get('M2 Construidos', 0.0)) if modo_edicion and propiedad.get('M2 Construidos') else 0.0,
+                    key="m2_construidos_input"
+                )
                 m2_construidos_container.markdown(
                     f"""
                     <style>
@@ -1129,30 +1184,47 @@ if opcion == "Agregar Propiedad":
                     "Año de Construcción", 
                     min_value=1800, 
                     max_value=datetime.now().year,
-                    value=datetime.now().year
+                    value=int(propiedad.get('Año de Construcción', datetime.now().year)) if modo_edicion and propiedad.get('Año de Construcción') else datetime.now().year
                 )
-                expediente = st.text_input("Expediente DOM")
+                expediente = st.text_input(
+                    "Expediente DOM",
+                    value=propiedad.get('Expediente DOM', '') if modo_edicion else ''
+                )
         
         # Sección 3: Clasificación y Fiscalización
         with st.expander("📋 Clasificación y Fiscalización", expanded=False):
             col1, col2 = st.columns(2)
             
             with col1:
-                destino_sii = st.text_input("Destino SII")
-                destino_dom = st.text_input("Destino DOM")
+                destino_sii = st.text_input(
+                    "Destino SII",
+                    value=propiedad.get('Destino SII', '') if modo_edicion else ''
+                )
+                destino_dom = st.text_input(
+                    "Destino DOM",
+                    value=propiedad.get('Destino DOM', '') if modo_edicion else ''
+                )
                 
             with col2:
+                # Obtener índice para el selectbox de fiscalización
+                fiscalizacion_opciones = ["", "CONSTRUCCION REGULARIZADA", "CONSTRUCCION IRREGULAR"]
+                fiscalizacion_index = fiscalizacion_opciones.index(propiedad.get('Fiscalización DOM', '')) if modo_edicion and propiedad.get('Fiscalización DOM') in fiscalizacion_opciones else 0
+                
                 fiscalizada = st.selectbox(
                     "Fiscalización DOM *",
-                    options=["", "CONSTRUCCION REGULARIZADA", "CONSTRUCCION IRREGULAR"],
-                    index=0,
+                    options=fiscalizacion_opciones,
+                    index=fiscalizacion_index,
                     help="Seleccione el estado de fiscalización"
                 )
                 
+                # Obtener índice para el selectbox de patente comercial
+                patente_opciones = ["", "PATENTE AL DIA", "PATENTE MOROSA", "SIN PATENTE"]
+                patente_index = patente_opciones.index(propiedad.get('Patente Comercial', '')) if modo_edicion and propiedad.get('Patente Comercial') in patente_opciones else 0
+                
                 patente_comercial = st.selectbox(
                     "PATENTE COMERCIAL *",
-                    options=["", "PATENTE AL DIA", "PATENTE MOROSA", "SIN PATENTE"],
-                    index=0,
+                    options=patente_opciones,
+                    index=patente_index,
                     help="Seleccione el estado de la patente"
                 )
         
@@ -1357,12 +1429,21 @@ if opcion == "Agregar Propiedad":
         st.markdown("<div style='margin: 20px 0;'></div>", unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            submitted = st.form_submit_button(
-                "💾 Guardar Propiedad", 
-                use_container_width=True,
-                type="primary"
-            )
+        # Botón de envío y validación
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if modo_edicion:
+                col1_1, col1_2 = st.columns(2)
+                with col1_1:
+                    submitted = st.form_submit_button("💾 Actualizar", type="primary", use_container_width=True)
+                with col1_2:
+                    if st.form_submit_button("❌ Cancelar", type="secondary", use_container_width=True):
+                        # Limpiar la propiedad en edición
+                        if 'propiedad_editar' in st.session_state:
+                            del st.session_state['propiedad_editar']
+                        st.experimental_rerun()
+            else:
+                submitted = st.form_submit_button("💾 Guardar Propiedad", type="primary", use_container_width=True)
         
         st.markdown("<div style='margin: 10px 0;'><small>* Campos obligatorios</small></div>", unsafe_allow_html=True)
         
@@ -1388,65 +1469,158 @@ if opcion == "Agregar Propiedad":
             if not validar_rut(rut) if rut else True:
                 st.error("❌ RUT inválido. Por favor verifique el formato y el dígito verificador.")
                 st.stop()  # Detener la ejecución si el RUT no es válido
-                
+            
             # Validar campos obligatorios
-            if campos_incompletos:
-                mensaje_error = "❌ Por favor complete los siguientes campos obligatorios:\n"
-                for campo in campos_incompletos:
-                    valor_campo, valido, tipo = campos_requeridos[campo]
-                    if tipo == "texto" and (not valor_campo or not str(valor_campo).strip()):
-                        mensaje_error += f"- {campo}: Campo de texto requerido\n"
-                    elif tipo == "numero" and (valor_campo is None or valor_campo <= 0):
-                        mensaje_error += f"- {campo}: Debe ser un número mayor a cero\n"
-                    elif tipo == "booleano" and not valor_campo:
-                        mensaje_error += f"- {campo}: Debe seleccionar una opción\n"
+            if not all([propietario.strip(), direccion.strip(), rol.strip()]):
+                st.error("❌ Por favor complete todos los campos obligatorios.")
+                st.stop()
+            
+            # Validar que al menos un campo de metros cuadrados tenga valor
+            if m2_terreno <= 0 and m2_construidos <= 0:
+                st.error("❌ Debe ingresar al menos un valor en M² Terreno o M² Construidos.")
+                st.stop()
                 
-                st.error(mensaje_error)
-                st.stop()  # Detener la ejecución si hay campos obligatorios faltantes
+            # Validar que los M² Construidos no sean mayores que los M² Terreno
+            if m2_construidos > m2_terreno > 0:
+                st.error("❌ Los M² Construidos no pueden ser mayores que los M² Terreno.")
+                st.stop()
                 
-            # Si llegamos aquí, todos los campos obligatorios están completos
-            # Validar coordenadas
-            if not coordenadas or not st.session_state.get('marker_position'):
-                st.error("❌ Por favor seleccione una ubicación en el mapa o ingrese coordenadas válidas.")
-                st.stop()  # Detener la ejecución si no hay coordenadas
-                
-            # Si todo está correcto, continuar con el guardado
-            # Asegurarse de que las coordenadas estén en el formato correcto
-            if isinstance(st.session_state.get('marker_position'), list) and len(st.session_state['marker_position']) == 2:
-                coordenadas = f"{st.session_state['marker_position'][0]}, {st.session_state['marker_position'][1]}"
+            # Obtener coordenadas si existen en el estado de la sesión
+            coordenadas = st.session_state.get('marker_position', None)
+            coordenadas_str = f"{coordenadas[0]}, {coordenadas[1]}" if coordenadas and len(coordenadas) == 2 else ""
             
             # Mostrar spinner durante el proceso
             with st.spinner('Guardando información...'):
-                time.sleep(0.5)  # Simular proceso
-                nueva_propiedad = {
+                # Preparar los datos de la propiedad
+                propiedad = {
                     'RUT': rut,
                     'Propietario': propietario,
                     'Dirección': direccion,
+                    'N° de contacto': num_contacto,
                     'ROL Propiedad': rol,
                     'Avalúo Total': avaluo,
-                    'Destino SII': destino_sii,
-                    'Destino DOM': destino_dom,
-                    'Patente Comercial': patente_comercial,
-                    'N° de contacto': num_contacto,
-                    'Coordenadas': coordenadas,
-                    'Fiscalización DOM': fiscalizada,
                     'M2 Terreno': m2_terreno,
                     'M2 Construidos': m2_construidos,
-                    'Línea de Construcción': linea_construccion,
                     'Año de Construcción': año_construccion,
                     'Expediente DOM': expediente,
+                    'Destino SII': destino_sii,
+                    'Destino DOM': destino_dom,
+                    'Fiscalización DOM': fiscalizada,
+                    'Patente Comercial': patente_comercial,
+                    'Línea de Construcción': linea_construccion,
                     'Observaciones': observaciones,
-                    'Fotos': []  # Inicializar lista vacía para fotos
+                    'Coordenadas': coordenadas_str if coordenadas_str else ''
                 }
                 
-                propiedad_id = guardar_propiedad(nueva_propiedad)
+                # Si estamos en modo edición, agregar el ID de la propiedad
+                if modo_edicion and 'id' in st.session_state['propiedad_editar']:
+                    propiedad['id'] = st.session_state['propiedad_editar']['id']
+                
+                # Guardar la propiedad en la base de datos
+                propiedad_id = guardar_propiedad(propiedad)
+                
                 if propiedad_id:
-                    st.markdown("""<div class='success-message'>✅ Propiedad agregada exitosamente!</div>""", unsafe_allow_html=True)
-                    # Limpiar el formulario después de un envío exitoso
-                    st.session_state.opcion_seleccionada = "🏠 Inicio"
-                    st.rerun()
+                    # Mostrar mensaje de éxito
+                    if modo_edicion:
+                        st.success("✅ Propiedad actualizada exitosamente!")
+                        # Limpiar la propiedad en edición
+                        if 'propiedad_editar' in st.session_state:
+                            del st.session_state['propiedad_editar']
+                    else:
+                        st.success("✅ Propiedad guardada exitosamente!")
+                    
+                    # Limpiar el formulario
+                    for key in list(st.session_state.keys()):
+                        if key.startswith('formulario_propiedad'):
+                            del st.session_state[key]
+                    
+                    # Limpiar coordenadas
+                    if 'marker_position' in st.session_state:
+                        del st.session_state['marker_position']
+                    
+                    # Forzar recarga para limpiar el formulario
+                    st.experimental_rerun()
                 else:
-                    st.error("Error al guardar los datos. Por favor, intente nuevamente.")
+                    st.error("❌ Error al guardar la propiedad. Por favor intente nuevamente.")
+        
+        # Sección 7: Eliminar Propiedad (solo en modo edición)
+        if modo_edicion and 'propiedad_editar' in st.session_state and 'id' in st.session_state['propiedad_editar']:
+            propiedad_id = st.session_state['propiedad_editar']['id']
+            propiedad_info = st.session_state['propiedad_editar']
+            
+            # Mostrar diálogo de confirmación
+            if st.button(f"🗑️ Eliminar Propiedad", key=f"btn_eliminar_{propiedad_id}", type="primary"):
+                st.session_state[f'mostrar_confirmacion_eliminar_{propiedad_id}'] = True
+            
+            # Mostrar diálogo de confirmación si está activo
+            if st.session_state.get(f'mostrar_confirmacion_eliminar_{propiedad_id}', False):
+                st.warning(
+                    """
+                    ⚠️ **¿Está seguro que desea eliminar esta propiedad?**  
+                    
+                    **Propietario:** {}  
+                    **Dirección:** {}  
+                    **RUT:** {}  
+                    
+                    Esta acción es irreversible y eliminará todos los datos asociados, incluidas las fotos.
+                    """.format(
+                        propiedad_info.get('Propietario', 'Sin especificar'),
+                        propiedad_info.get('Dirección', 'Sin especificar'),
+                        propiedad_info.get('RUT', 'Sin especificar')
+                    )
+                )
+                
+                # Botones de confirmación
+                col1, col2, _ = st.columns([1, 1, 3])
+                with col1:
+                    if st.button("✅ Confirmar eliminación", key=f"confirmar_si_{propiedad_id}", type="primary"):
+                        conn = None
+                        try:
+                            conn = get_db_connection()
+                            cursor = conn.cursor()
+                            
+                            # Obtener información de las fotos para eliminarlas del sistema de archivos
+                            cursor.execute('SELECT ruta_archivo FROM fotos WHERE propiedad_id = ?', (propiedad_id,))
+                            fotos = cursor.fetchall()
+                            
+                            # Eliminar archivos físicos
+                            for foto in fotos:
+                                try:
+                                    if foto[0] and os.path.exists(foto[0]):
+                                        os.remove(foto[0])
+                                except Exception as e:
+                                    st.error(f"Error al eliminar el archivo {foto[0] if foto[0] else 'desconocido'}: {e}")
+                            
+                            # Eliminar registros de la base de datos
+                            cursor.execute('DELETE FROM fotos WHERE propiedad_id = ?', (propiedad_id,))
+                            cursor.execute('DELETE FROM propiedades WHERE id = ?', (propiedad_id,))
+                            conn.commit()
+                            
+                            st.success("✅ Propiedad eliminada correctamente.")
+                            
+                            # Limpiar estados
+                            if f'mostrar_confirmacion_eliminar_{propiedad_id}' in st.session_state:
+                                del st.session_state[f'mostrar_confirmacion_eliminar_{propiedad_id}']
+                            if 'propiedad_editar' in st.session_state:
+                                del st.session_state['propiedad_editar']
+                            
+                            # Esperar 1 segundo antes de recargar para que se vea el mensaje
+                            time.sleep(1)
+                            st.rerun()
+                            
+                        except Error as e:
+                            st.error(f"❌ Error al eliminar la propiedad: {str(e)}")
+                            if conn:
+                                conn.rollback()
+                        finally:
+                            if conn:
+                                conn.close()
+                
+                with col2:
+                    if st.button("❌ Cancelar", key=f"confirmar_no_{propiedad_id}"):
+                        if f'mostrar_confirmacion_eliminar_{propiedad_id}' in st.session_state:
+                            del st.session_state[f'mostrar_confirmacion_eliminar_{propiedad_id}']
+                        st.rerun()
 
 elif opcion == "Ver/Editar Propiedades":
     st.markdown("""
@@ -1658,9 +1832,12 @@ elif opcion == "Ver/Editar Propiedades":
                         col1, col2 = st.columns([1, 1])
                         with col1:
                             if st.button(f"✏️ Editar {row['id']}", key=f"editar_{row['id']}"):
+                                # Guardar los datos de la propiedad a editar en session_state
                                 st.session_state['propiedad_editar'] = row.to_dict()
+                                # Cambiar a la pestaña de Agregar Propiedad
                                 st.session_state['opcion_seleccionada'] = "Agregar Propiedad"
-                                st.rerun()
+                                # Forzar recarga para mostrar el formulario de edición
+                                st.experimental_rerun()
                         with col2:
                             # Llamar a la función de eliminación
                             eliminar_propiedad(row['id'], row)
@@ -2412,5 +2589,3 @@ elif opcion == "Exportar Datos":
                 st.error(f"Error al exportar a JSON: {str(e)}")
     else:
         st.info("No hay propiedades registradas para exportar.")
-
-
