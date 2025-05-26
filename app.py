@@ -16,6 +16,15 @@ import io
 # Inicializar estado de la sesión
 if 'opcion_seleccionada' not in st.session_state:
     st.session_state.opcion_seleccionada = "🏠 Inicio"
+    # Inicializar estados de los inputs
+    st.session_state['rut_input'] = ""
+    st.session_state['propietario_input'] = ""
+    st.session_state['num_contacto_input'] = ""
+    st.session_state['direccion_input'] = ""
+    st.session_state['rol_input'] = ""
+    st.session_state['coordenadas_input'] = ""
+    st.session_state['map_center'] = [-33.4172, -70.6506]
+    st.session_state['marker_position'] = None
 
 # Configuración de la página
 st.set_page_config(
@@ -288,37 +297,100 @@ def init_db():
     return False
 
 def guardar_propiedad(propiedad):
-    """Guarda una nueva propiedad en la base de datos"""
+    """Guarda o actualiza una propiedad en la base de datos"""
     conn = get_db_connection()
     if conn is not None:
         try:
             cursor = conn.cursor()
             
-            # Insertar propiedad
-            cursor.execute('''
-            INSERT OR REPLACE INTO propiedades (
-                rut, propietario, direccion, rol_propiedad, avaluo_total,
-                destino_sii, destino_dom, patente_comercial, num_contacto,
-                coordenadas, fiscalizacion_dom, m2_terreno, m2_construidos,
-                linea_construccion, ano_construccion, expediente_dom, observaciones
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                propiedad['RUT'], propiedad['Propietario'], propiedad['Dirección'],
-                propiedad['ROL Propiedad'], propiedad['Avalúo Total'], propiedad['Destino SII'],
-                propiedad['Destino DOM'], propiedad['Patente Comercial'], propiedad['N° de contacto'],
-                propiedad['Coordenadas'], propiedad['Fiscalización DOM'], propiedad['M2 Terreno'],
-                propiedad['M2 Construidos'], propiedad['Línea de Construcción'],
-                propiedad['Año de Construcción'], propiedad['Expediente DOM'], propiedad['Observaciones']
-            ))
+            # Verificar si la propiedad ya existe (usando RUT como identificador único)
+            rut = propiedad.get('RUT', '')
+            cursor.execute('SELECT id FROM propiedades WHERE rut = ?', (rut,))
+            propiedad_existente = cursor.fetchone()
             
-            propiedad_id = cursor.lastrowid
+            if propiedad_existente:
+                # Actualizar propiedad existente
+                propiedad_id = propiedad_existente[0]
+                cursor.execute('''
+                UPDATE propiedades SET
+                    propietario = ?,
+                    direccion = ?,
+                    rol_propiedad = ?,
+                    avaluo_total = ?,
+                    destino_sii = ?,
+                    destino_dom = ?,
+                    patente_comercial = ?,
+                    num_contacto = ?,
+                    coordenadas = ?,
+                    fiscalizacion_dom = ?,
+                    m2_terreno = ?,
+                    m2_construidos = ?,
+                    linea_construccion = ?,
+                    ano_construccion = ?,
+                    expediente_dom = ?,
+                    observaciones = ?,
+                    fecha_actualizacion = CURRENT_TIMESTAMP
+                WHERE rut = ?
+                ''', (
+                    propiedad.get('Propietario', ''), 
+                    propiedad.get('Dirección', ''),
+                    propiedad.get('ROL Propiedad', ''), 
+                    propiedad.get('Avalúo Total', 0),
+                    propiedad.get('Destino SII', ''),
+                    propiedad.get('Destino DOM', ''), 
+                    propiedad.get('Patente Comercial', ''), 
+                    propiedad.get('N° de contacto', ''),
+                    propiedad.get('Coordenadas', ''), 
+                    propiedad.get('Fiscalización DOM', ''), 
+                    propiedad.get('M2 Terreno', 0),
+                    propiedad.get('M2 Construidos', 0), 
+                    propiedad.get('Línea de Construcción', ''),
+                    propiedad.get('Año de Construcción', ''), 
+                    propiedad.get('Expediente DOM', ''), 
+                    propiedad.get('Observaciones', ''),
+                    rut
+                ))
+            else:
+                # Insertar nueva propiedad
+                cursor.execute('''
+                INSERT INTO propiedades (
+                    rut, propietario, direccion, rol_propiedad, avaluo_total,
+                    destino_sii, destino_dom, patente_comercial, num_contacto,
+                    coordenadas, fiscalizacion_dom, m2_terreno, m2_construidos,
+                    linea_construccion, ano_construccion, expediente_dom, observaciones
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    rut,
+                    propiedad.get('Propietario', ''), 
+                    propiedad.get('Dirección', ''),
+                    propiedad.get('ROL Propiedad', ''), 
+                    propiedad.get('Avalúo Total', 0),
+                    propiedad.get('Destino SII', ''),
+                    propiedad.get('Destino DOM', ''), 
+                    propiedad.get('Patente Comercial', ''), 
+                    propiedad.get('N° de contacto', ''),
+                    propiedad.get('Coordenadas', ''), 
+                    propiedad.get('Fiscalización DOM', ''), 
+                    propiedad.get('M2 Terreno', 0),
+                    propiedad.get('M2 Construidos', 0), 
+                    propiedad.get('Línea de Construcción', ''),
+                    propiedad.get('Año de Construcción', ''), 
+                    propiedad.get('Expediente DOM', ''), 
+                    propiedad.get('Observaciones', '')
+                ))
+                propiedad_id = cursor.lastrowid
+            
             conn.commit()
             return propiedad_id
+            
         except Error as e:
             st.error(f"Error al guardar la propiedad: {e}")
+            if conn:
+                conn.rollback()
             return None
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     return None
 
 def guardar_fotos(propiedad_id, fotos):
@@ -1072,7 +1144,7 @@ if opcion == "Agregar Propiedad":
                     if coords:
                         st.session_state['map_center'] = coords
                         st.session_state['marker_position'] = coords
-                        st.experimental_rerun()
+                        st.rerun()
             
             # Inicializar el estado de la sesión para el mapa si no existe
             if 'map_center' not in st.session_state:
@@ -1139,12 +1211,20 @@ if opcion == "Agregar Propiedad":
                 st.session_state['marker_position'] = [output["last_clicked"]["lat"], output["last_clicked"]["lng"]]
                 st.session_state['map_center'] = st.session_state['marker_position']
                 st.session_state['last_clicked'] = output["last_clicked"]
-                st.experimental_rerun()
+                st.rerun()
             
             # Actualizar el campo de coordenadas con la posición del marcador
-            if st.session_state['marker_position']:
+            # Inicializar coordenadas con valor predeterminado
+            coordenadas = ""
+            
+            if st.session_state.get('marker_position'):
                 coordenadas = f"{st.session_state['marker_position'][0]}, {st.session_state['marker_position'][1]}"
                 st.session_state['coordenadas_input'] = coordenadas
+                st.markdown(f"**Ubicación seleccionada:** {st.session_state['marker_position'][0]:.6f}, {st.session_state['marker_position'][1]:.6f}")
+            else:
+                # Si no hay marcador, usar el valor del input si existe
+                coordenadas = st.session_state.get('coordenadas_input', '')
+                st.markdown("**Ubicación seleccionada:** Ninguna")
             
             # Mostrar las coordenadas actuales
             if st.session_state.get('marker_position'):
@@ -1154,7 +1234,7 @@ if opcion == "Agregar Propiedad":
                 if coords:
                     st.session_state['marker_position'] = coords
                     st.session_state['map_center'] = coords
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("❌ Formato de coordenadas inválido. Use: latitud, longitud")
         
@@ -1177,65 +1257,85 @@ if opcion == "Agregar Propiedad":
         
         # Validación antes de enviar el formulario
         campos_requeridos = {
-            'RUT': (rut, validar_rut(rut) if rut else False),
-            'Propietario': (propietario, bool(propietario and propietario.strip())),
-            'N° de contacto': (num_contacto, bool(num_contacto and num_contacto.strip())),
-            'Dirección': (direccion, bool(direccion and direccion.strip())),
-            'ROL Propiedad': (rol, bool(rol and rol.strip())),
-            'Avalúo Total': (avaluo, avaluo > 0),
-            'M² Terreno': (m2_terreno, m2_terreno > 0),
-            'M² Construidos': (m2_construidos, m2_construidos > 0),
-            'Fiscalización DOM': (fiscalizada, bool(fiscalizada)),
-            'PATENTE COMERCIAL': (patente_comercial, bool(patente_comercial))
+            'RUT': (rut, validar_rut(rut) if rut else False, "texto"),
+            'Propietario': (propietario, bool(propietario and propietario.strip()), "texto"),
+            'N° de contacto': (num_contacto, bool(num_contacto and num_contacto.strip()), "texto"),
+            'Dirección': (direccion, bool(direccion and direccion.strip()), "texto"),
+            'ROL Propiedad': (rol, bool(rol and rol.strip()), "texto"),
+            'Avalúo Total': (avaluo, avaluo > 0, "numero"),
+            'M² Terreno': (m2_terreno, m2_terreno > 0, "numero"),
+            'M² Construidos': (m2_construidos, m2_construidos > 0, "numero"),
+            'Fiscalización DOM': (fiscalizada, bool(fiscalizada), "booleano"),
+            'PATENTE COMERCIAL': (patente_comercial, bool(patente_comercial), "texto")
         }
         
         # Verificar si hay campos obligatorios vacíos
-        campos_incompletos = [campo for campo, (valor, valido) in campos_requeridos.items() if not valido]
+        campos_incompletos = [campo for campo, (valor, valido, tipo) in campos_requeridos.items() if not valido]
         
         if submitted:
+            # Validar RUT
             if not validar_rut(rut) if rut else True:
                 st.error("❌ RUT inválido. Por favor verifique el formato y el dígito verificador.")
-            elif campos_incompletos:
-                st.error(f"❌ Por favor complete los siguientes campos obligatorios: {', '.join(campos_incompletos)}")
-            else:
-                # Mostrar spinner durante el proceso
-                with st.spinner('Guardando información...'):
-                    time.sleep(0.5)  # Simular proceso
-                    nueva_propiedad = {
-                        'RUT': rut,
-                        'Propietario': propietario,
-                        'Dirección': direccion,
-                        'ROL Propiedad': rol,
-                        'Avalúo Total': avaluo,
-                        'Destino SII': destino_sii,
-                        'Destino DOM': destino_dom,
-                        'Patente Comercial': patente_comercial,
-                        'N° de contacto': num_contacto,
-                        'Coordenadas': coordenadas,
-                        'Fiscalización DOM': fiscalizada,
-                        'M2 Terreno': m2_terreno,
-                        'M2 Construidos': m2_construidos,
-                        'Línea de Construcción': linea_construccion,
-                        'Año de Construcción': año_construccion,
-                        'Expediente DOM': expediente,
-                        'Observaciones': observaciones,
-                        'Fotos': []  # Inicializar lista vacía para fotos
-                    }
-                    propiedad_id = guardar_propiedad(nueva_propiedad)
-                    if propiedad_id:
-                        st.markdown("""<div class='success-message'>✅ Propiedad agregada exitosamente!</div>""", unsafe_allow_html=True)
-                        # Limpiar el formulario después de un envío exitoso
-                        st.session_state['rut_input'] = ""
-                        st.session_state['propietario_input'] = ""
-                        st.session_state['num_contacto_input'] = ""
-                        st.session_state['direccion_input'] = ""
-                        st.session_state['rol_input'] = ""
-                        st.session_state['coordenadas_input'] = ""
-                        st.session_state['map_center'] = [-33.4172, -70.6506]
-                        st.session_state['marker_position'] = None
-                        st.experimental_rerun()
-                    else:
-                        st.error("Error al guardar los datos. Por favor, intente nuevamente.")
+                st.stop()  # Detener la ejecución si el RUT no es válido
+                
+            # Validar campos obligatorios
+            if campos_incompletos:
+                mensaje_error = "❌ Por favor complete los siguientes campos obligatorios:\n"
+                for campo in campos_incompletos:
+                    valor_campo, valido, tipo = campos_requeridos[campo]
+                    if tipo == "texto" and (not valor_campo or not str(valor_campo).strip()):
+                        mensaje_error += f"- {campo}: Campo de texto requerido\n"
+                    elif tipo == "numero" and (valor_campo is None or valor_campo <= 0):
+                        mensaje_error += f"- {campo}: Debe ser un número mayor a cero\n"
+                    elif tipo == "booleano" and not valor_campo:
+                        mensaje_error += f"- {campo}: Debe seleccionar una opción\n"
+                
+                st.error(mensaje_error)
+                st.stop()  # Detener la ejecución si hay campos obligatorios faltantes
+                
+            # Si llegamos aquí, todos los campos obligatorios están completos
+            # Validar coordenadas
+            if not coordenadas or not st.session_state.get('marker_position'):
+                st.error("❌ Por favor seleccione una ubicación en el mapa o ingrese coordenadas válidas.")
+                st.stop()  # Detener la ejecución si no hay coordenadas
+                
+            # Si todo está correcto, continuar con el guardado
+            # Asegurarse de que las coordenadas estén en el formato correcto
+            if isinstance(st.session_state.get('marker_position'), list) and len(st.session_state['marker_position']) == 2:
+                coordenadas = f"{st.session_state['marker_position'][0]}, {st.session_state['marker_position'][1]}"
+            
+            # Mostrar spinner durante el proceso
+            with st.spinner('Guardando información...'):
+                time.sleep(0.5)  # Simular proceso
+                nueva_propiedad = {
+                    'RUT': rut,
+                    'Propietario': propietario,
+                    'Dirección': direccion,
+                    'ROL Propiedad': rol,
+                    'Avalúo Total': avaluo,
+                    'Destino SII': destino_sii,
+                    'Destino DOM': destino_dom,
+                    'Patente Comercial': patente_comercial,
+                    'N° de contacto': num_contacto,
+                    'Coordenadas': coordenadas,
+                    'Fiscalización DOM': fiscalizada,
+                    'M2 Terreno': m2_terreno,
+                    'M2 Construidos': m2_construidos,
+                    'Línea de Construcción': linea_construccion,
+                    'Año de Construcción': año_construccion,
+                    'Expediente DOM': expediente,
+                    'Observaciones': observaciones,
+                    'Fotos': []  # Inicializar lista vacía para fotos
+                }
+                
+                propiedad_id = guardar_propiedad(nueva_propiedad)
+                if propiedad_id:
+                    st.markdown("""<div class='success-message'>✅ Propiedad agregada exitosamente!</div>""", unsafe_allow_html=True)
+                    # Limpiar el formulario después de un envío exitoso
+                    st.session_state.opcion_seleccionada = "🏠 Inicio"
+                    st.rerun()
+                else:
+                    st.error("Error al guardar los datos. Por favor, intente nuevamente.")
 
 elif opcion == "Ver/Editar Propiedades":
     st.markdown("""
@@ -1266,88 +1366,214 @@ elif opcion == "Ver/Editar Propiedades":
             # Diccionario para almacenar los filtros
             filtros = {}
             
-            # Obtener columnas para filtrar (excluir columnas con muchos valores únicos)
-            columnas_filtrables = [col for col in df.columns if col not in ['id', 'fecha_creacion', 'fecha_actualizacion']]
+            # Mapeo de nombres de columnas amigables a nombres reales en la base de datos
+            mapeo_columnas = {
+                'RUT': 'rut',
+                'Propietario': 'propietario',
+                'ROL Propiedad': 'rol_propiedad',
+                'Dirección': 'dirección'
+            }
             
-            # Crear un filtro por cada columna
-            for col in columnas_filtrables:
-                if df[col].nunique() < 50:  # Solo crear filtros para columnas con menos de 50 valores únicos
-                    opciones = ['Todos'] + sorted([str(x) for x in df[col].dropna().unique()])
-                    seleccion = st.sidebar.multiselect(
-                        f"Filtrar por {col}",
-                        options=opciones[1:],  # Excluir 'Todos' de las opciones
-                        default=[],
-                        key=f"filtro_{col}"
-                    )
-                    if seleccion:  # Si hay alguna selección, aplicar el filtro
-                        filtros[col] = seleccion
+            # Columnas específicas para filtrar (nombres amigables)
+            columnas_filtrables = ['RUT', 'Propietario', 'ROL Propiedad', 'Dirección']
+            
+            # Crear un filtro para cada columna específica
+            for col_amigable in columnas_filtrables:
+                if mapeo_columnas[col_amigable] in df.columns:
+                    col_real = mapeo_columnas[col_amigable]
+                    try:
+                        # Convertir a string y limpiar los valores
+                        df[col_real] = df[col_real].astype(str).str.strip()
+                        
+                        # Obtener valores únicos, ordenados y sin valores vacíos
+                        valores_unicos = sorted([v for v in df[col_real].dropna().unique().tolist() if v and v != 'nan'])
+                        
+                        if valores_unicos:  # Solo crear el filtro si hay valores
+                            seleccion = st.sidebar.multiselect(
+                                f"Filtrar por {col_amigable}",
+                                options=valores_unicos,
+                                default=[],
+                                key=f"filtro_{col_real}",
+                                help=f"Busque y seleccione {col_amigable.lower()} para filtrar"
+                            )
+                            if seleccion:  # Si hay alguna selección, aplicar el filtro
+                                filtros[col_real] = seleccion
+                    except Exception as e:
+                        # Si hay un error al procesar la columna, la omitimos
+                        st.sidebar.error(f"Error al crear filtro para {col_amigable}: {str(e)}")
+                        continue
             
             # Aplicar filtros al DataFrame
             if filtros:
                 for col, valores in filtros.items():
                     if 'Todos' not in valores:  # Si no se seleccionó 'Todos', aplicar el filtro
                         df = df[df[col].astype(str).isin(valores)]
-            
-            # Mostrar el DataFrame con los filtros aplicados
-            if not df.empty:
-                st.write(f"Mostrando {len(df)} de {len(propiedades['datos'])} propiedades")
-                
-                # Crear una copia del DataFrame para no modificar el original
-                display_df = df.copy()
-                
-                # Configurar las columnas a mostrar
-                column_config = {}
-                
-                # Configurar la columna de miniatura
-                if 'Miniatura' in display_df.columns:
-                    # Mover la columna Miniatura al principio
-                    cols = ['Miniatura'] + [col for col in display_df.columns if col != 'Miniatura' and col != 'Fotos']
-                    display_df = display_df[cols]
+                # Mostrar el DataFrame con los filtros aplicados
+                if not df.empty:
+                    st.write(f"Mostrando {len(df)} de {len(propiedades['datos'])} propiedades")
                     
-                    # Configurar la columna de miniaturas
-                    column_config["Miniatura"] = st.column_config.ImageColumn(
-                        "Foto",
-                        help="Miniatura de la propiedad",
+                    # Crear una copia del DataFrame para no modificar el original
+                    display_df = df.copy()
+                    
+                    # Configurar las columnas a mostrar
+                    column_config = {}
+                    
+                    # Configurar la columna de miniatura
+                    if 'Miniatura' in display_df.columns:
+                        # Mover la columna Miniatura al principio
+                        cols = ['Miniatura'] + [col for col in display_df.columns if col != 'Miniatura' and col != 'Fotos']
+                        display_df = display_df[cols]
+                        
+                        # Configurar la columna de miniaturas
+                        column_config["Miniatura"] = st.column_config.ImageColumn(
+                            "Foto",
+                            help="Miniatura de la propiedad",
+                            width="small"
+                        )
+                    
+                    # Configurar la columna de Fotos (lista completa)
+                    if 'Fotos' in display_df.columns:
+                        column_config["Fotos"] = st.column_config.ListColumn(
+                            "Todas las Fotos",
+                            help="Todas las fotos de la propiedad"
+                        )
+                    
+                    # Agregar columna de acciones
+                    if 'Acciones' not in display_df.columns:
+                        display_df['Acciones'] = ''
+                    
+                    # Configurar la columna de acciones
+                    column_config["Acciones"] = st.column_config.Column(
+                        "Acciones",
+                        help="Acciones disponibles para la propiedad",
                         width="small"
                     )
-                
-                # Configurar la columna de Fotos (lista completa)
-                if 'Fotos' in display_df.columns:
-                    column_config["Fotos"] = st.column_config.ListColumn(
-                        "Todas las Fotos",
-                        help="Todas las fotos de la propiedad"
+                    
+                    # Mostrar el editor de datos
+                    st.markdown("""
+                        <style>
+                            img {
+                                max-height: 50px;
+                                width: auto;
+                                border-radius: 4px;
+                            }
+                            .stDataFrame img {
+                                max-height: 50px !important;
+                                width: auto !important;
+                            }
+                            .stButton button {
+                                padding: 0.25rem 0.5rem;
+                                font-size: 0.8rem;
+                            }
+                        </style>
+                    """, unsafe_allow_html=True)
+                    
+                    # Función para manejar la eliminación de propiedades
+                    def eliminar_propiedad(propiedad_id, propiedad_info):
+                        # Usar el estado de la sesión para controlar la confirmación
+                        if f'confirmar_eliminar_{propiedad_id}' not in st.session_state:
+                            st.session_state[f'confirmar_eliminar_{propiedad_id}'] = False
+                        
+                        # Mostrar diálogo de confirmación
+                        if not st.session_state[f'confirmar_eliminar_{propiedad_id}']:
+                            if st.button(f"🗑️ Eliminar {propiedad_id}", key=f"btn_eliminar_{propiedad_id}", type="primary"):
+                                st.session_state[f'confirmar_eliminar_{propiedad_id}'] = True
+                                st.rerun()
+                        else:
+                            st.warning(
+                                """
+                                ⚠️ **¿Está seguro que desea eliminar esta propiedad?**  
+                                
+                                **Propietario:** {}  
+                                **Dirección:** {}  
+                                **RUT:** {}  
+                                
+                                Esta acción es irreversible y eliminará todos los datos asociados, incluidas las fotos.
+                                """.format(
+                                    propiedad_info.get('Propietario', 'Sin especificar'),
+                                    propiedad_info.get('Dirección', 'Sin especificar'),
+                                    propiedad_info.get('RUT', 'Sin especificar')
+                                )
+                            )
+                            
+                            # Botones de confirmación
+                            col1, col2, _ = st.columns([1, 1, 3])
+                            with col1:
+                                if st.button("✅ Confirmar eliminación", key=f"confirmar_si_{propiedad_id}", type="primary"):
+                                    conn = None
+                                    try:
+                                        conn = get_db_connection()
+                                        cursor = conn.cursor()
+                                        
+                                        # Obtener información de las fotos para eliminarlas del sistema de archivos
+                                        cursor.execute('SELECT ruta_archivo FROM fotos WHERE propiedad_id = ?', (propiedad_id,))
+                                        fotos = cursor.fetchall()
+                                        
+                                        # Eliminar archivos físicos
+                                        for foto in fotos:
+                                            try:
+                                                if foto[0] and os.path.exists(foto[0]):
+                                                    os.remove(foto[0])
+                                            except Exception as e:
+                                                st.error(f"Error al eliminar el archivo {foto[0] if foto[0] else 'desconocido'}: {e}")
+                                        
+                                        # Eliminar registros de la base de datos
+                                        cursor.execute('DELETE FROM fotos WHERE propiedad_id = ?', (propiedad_id,))
+                                        cursor.execute('DELETE FROM propiedades WHERE id = ?', (propiedad_id,))
+                                        conn.commit()
+                                        
+                                        st.success("✅ Propiedad eliminada correctamente.")
+                                        # Limpiar el estado de confirmación
+                                        st.session_state[f'confirmar_eliminar_{propiedad_id}'] = False
+                                        # Esperar 1 segundo antes de recargar para que se vea el mensaje
+                                        time.sleep(1)
+                                        st.rerun()
+                                        
+                                    except Error as e:
+                                        st.error(f"❌ Error al eliminar la propiedad: {str(e)}")
+                                        if conn:
+                                            conn.rollback()
+                                    finally:
+                                        if conn:
+                                            conn.close()
+                            
+                            with col2:
+                                if st.button("❌ Cancelar", key=f"confirmar_no_{propiedad_id}"):
+                                    st.session_state[f'confirmar_eliminar_{propiedad_id}'] = False
+                                    st.rerun()
+                    
+                    # Mostrar botones de acción para cada propiedad
+                    for idx, row in display_df.iterrows():
+                        col1, col2 = st.columns([1, 1])
+                        with col1:
+                            if st.button(f"✏️ Editar {row['id']}", key=f"editar_{row['id']}"):
+                                st.session_state['propiedad_editar'] = row.to_dict()
+                                st.session_state['opcion_seleccionada'] = "Agregar Propiedad"
+                                st.rerun()
+                        with col2:
+                            # Llamar a la función de eliminación
+                            eliminar_propiedad(row['id'], row)
+                    
+                    # Mostrar el dataframe sin la columna de acciones
+                    display_df = display_df.drop(columns=['Acciones'])
+                    
+                    # Mostrar el editor de datos
+                    edited_df = st.data_editor(
+                        display_df,
+                        column_config=column_config,
+                        num_rows="fixed",
+                        use_container_width=True,
+                        hide_index=True,
+                        key="editor_propiedades"
                     )
-                
-                # Mostrar el editor de datos
-                st.markdown("""
-                    <style>
-                        img {
-                            max-height: 50px;
-                            width: auto;
-                            border-radius: 4px;
-                        }
-                        .stDataFrame img {
-                            max-height: 50px !important;
-                            width: auto !important;
-                        }
-                    </style>
-                """, unsafe_allow_html=True)
-                
-                edited_df = st.data_editor(
-                    display_df,
-                    column_config=column_config,
-                    num_rows="dynamic",
-                    use_container_width=True,
-                    hide_index=True
-                )
-                
-                # Guardar cambios si hay modificaciones
-                if not edited_df.equals(df):
-                    # Actualizar propiedades en la base de datos
-                    for i, propiedad in edited_df.iterrows():
-                        guardar_propiedad(propiedad.to_dict())
-                    st.success("¡Cambios guardados exitosamente!")
-                    st.experimental_rerun()
+                    
+                    # Guardar cambios si hay modificaciones
+                    if not edited_df.equals(display_df):
+                        # Actualizar propiedades en la base de datos
+                        for i, propiedad in edited_df.iterrows():
+                            guardar_propiedad(propiedad.to_dict())
+                        st.success("¡Cambios guardados exitosamente!")
+                        st.rerun()
             else:
                 st.warning("No hay propiedades que coincidan con los filtros seleccionados.")
         
@@ -1360,7 +1586,7 @@ elif opcion == "Ver/Editar Propiedades":
                 for col in columnas_filtrables:
                     if f"filtro_{col}" in st.session_state:
                         st.session_state[f"filtro_{col}"] = []
-                st.experimental_rerun()
+                st.rerun()
         
         with tab2:
             m = crear_mapa()
@@ -1375,8 +1601,10 @@ elif opcion == "Ver/Editar Propiedades":
             
             # Agregar marcadores para cada propiedad con coordenadas válidas
             for propiedad in propiedades['datos']:
-                if isinstance(propiedad['Coordenadas'], str):
-                    coords = parse_coordenadas(propiedad['Coordenadas'])
+                # Verificar si la propiedad tiene coordenadas y son válidas
+                coordenadas = propiedad.get('Coordenadas') or propiedad.get('coordenadas')
+                if coordenadas and isinstance(coordenadas, str):
+                    coords = parse_coordenadas(coordenadas)
                     if coords:
                         # Crear contenido HTML para el popup
                         popup_html = f"""
@@ -1430,7 +1658,11 @@ elif opcion == "Ver/Editar Propiedades":
             st.subheader("Análisis por Fiscalización DOM")
             fiscalizadas_count = {}
             for propiedad in propiedades['datos']:
-                fiscalizacion_dom = propiedad['Fiscalización DOM']
+                # Usar get() con valor por defecto 'No Especificada' si la clave no existe
+                fiscalizacion_dom = propiedad.get('Fiscalización DOM', 'No Especificada')
+                # Si el valor es None o vacío, usar 'No Especificada'
+                if not fiscalizacion_dom:
+                    fiscalizacion_dom = 'No Especificada'
                 if fiscalizacion_dom in fiscalizadas_count:
                     fiscalizadas_count[fiscalizacion_dom] += 1
                 else:
@@ -1613,19 +1845,28 @@ elif opcion == "Exportar Datos":
     propiedades = obtener_propiedades()
     
     if len(propiedades['datos']) > 0:
-        # Exportar a Excel
+        # Crear DataFrame con los datos
         df = pd.DataFrame(propiedades['datos'])
-        excel_file = df.to_excel(index=False)
+        
+        # Exportar a Excel usando BytesIO
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Propiedades')
+        excel_data = excel_buffer.getvalue()
+        
+        # Botón de descarga para Excel
         st.download_button(
-            label="Descargar como Excel",
-            data=excel_file,
+            label="📊 Descargar como Excel",
+            data=excel_data,
             file_name="catastro_propiedades.xlsx",
-            mime="application/vnd.ms-excel"
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         
-        # Mostrar botón para exportar resultados
+        # Mostrar botón para exportar a CSV
         if not df.empty:
-            csv = df.drop(columns=['Fotos']).to_csv(index=False, encoding='utf-8-sig')
+            # Asegurarse de que la columna 'Fotos' existe antes de intentar eliminarla
+            csv_columns = [col for col in df.columns if col != 'Fotos']
+            csv = df[csv_columns].to_csv(index=False, encoding='utf-8-sig')
             st.download_button(
                 label="📥 Exportar resultados a CSV",
                 data=csv,
@@ -1652,27 +1893,50 @@ elif opcion == "Gestionar Fotos":
     propiedades = obtener_propiedades()
     
     if 'datos' in propiedades and propiedades['datos']:
-        # Crear lista de propiedades para el selector
-        propiedades_lista = [f"{propiedad['RUT']} - {propiedad['Propietario']} - {propiedad['Dirección']}" for propiedad in propiedades['datos']]
+        # Crear lista de propiedades para el selector de manera segura
+        propiedades_lista = []
+        for i, propiedad in enumerate(propiedades['datos']):
+            # Usar get() con valores por defecto para manejar claves faltantes
+            rut = propiedad.get('RUT', 'Sin RUT')
+            propietario = propiedad.get('Propietario', 'Sin propietario')
+            direccion = propiedad.get('Dirección', 'Sin dirección')
+            
+            # Crear un identificador único para cada propiedad
+            id_unico = f"{i:04d}"  # Usamos el índice como identificador único
+            
+            # Agregar a la lista con el identificador único
+            propiedades_lista.append({
+                'id': id_unico,
+                'texto': f"{rut} - {propietario} - {direccion}",
+                'propiedad': propiedad
+            })
         
-        propiedad_seleccionada = st.selectbox(
+        # Mostrar el selector con los textos formateados
+        opcion_seleccionada = st.selectbox(
             "Seleccione una propiedad:",
-            propiedades_lista,
+            [p['texto'] for p in propiedades_lista],
             index=0
         )
         
-        # Obtener el índice de la propiedad seleccionada
-        idx = propiedades_lista.index(propiedad_seleccionada)
-        propiedad = propiedades['datos'][idx]
+        # Obtener la propiedad seleccionada
+        propiedad_seleccionada = next((p for p in propiedades_lista if p['texto'] == opcion_seleccionada), None)
+        
+        # Obtener la propiedad seleccionada
+        if propiedad_seleccionada is not None:
+            propiedad = propiedad_seleccionada['propiedad']
+        else:
+            st.error("No se pudo cargar la propiedad seleccionada.")
+            st.stop()
         
         st.markdown("### Información de la Propiedad")
         col1, col2 = st.columns(2)
         with col1:
-            st.write(f"**Propietario:** {propiedad['Propietario']}")
-            st.write(f"**RUT:** {propiedad['RUT']}")
+            # Usar get() con valores por defecto para manejar claves faltantes
+            st.write(f"**Propietario:** {propiedad.get('Propietario', 'No especificado')}")
+            st.write(f"**RUT:** {propiedad.get('RUT', 'No especificado')}")
         with col2:
-            st.write(f"**Dirección:** {propiedad['Dirección']}")
-            st.write(f"**ROL Propiedad:** {propiedad['ROL Propiedad']}")
+            st.write(f"**Dirección:** {propiedad.get('Dirección', 'No especificada')}")
+            st.write(f"**ROL Propiedad:** {propiedad.get('ROL Propiedad', 'No especificado')}")
         
         st.markdown("---")
         st.markdown("### Fotos de la Propiedad")
@@ -2037,3 +2301,4 @@ elif opcion == "Exportar Datos":
                 st.error(f"Error al exportar a JSON: {str(e)}")
     else:
         st.info("No hay propiedades registradas para exportar.")
+
