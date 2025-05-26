@@ -1303,13 +1303,15 @@ if opcion == "Agregar Propiedad":
                 st.session_state['last_clicked'] = output["last_clicked"]
                 st.rerun()
             
-            # Actualizar el campo de coordenadas con la posición del marcador
             # Inicializar coordenadas con valor predeterminado
             coordenadas = ""
             
-            if st.session_state.get('marker_position'):
+            # Actualizar el campo de coordenadas con la posición del marcador
+            if 'marker_position' in st.session_state:
                 coordenadas = f"{st.session_state['marker_position'][0]}, {st.session_state['marker_position'][1]}"
-                st.session_state['coordenadas_input'] = coordenadas
+                # Solo actualizar si es diferente para evitar ciclos de renderizado
+                if 'coordenadas_input' not in st.session_state or st.session_state.coordenadas_input != coordenadas:
+                    st.session_state.coordenadas_input = coordenadas
                 st.markdown(f"**Ubicación seleccionada:** {st.session_state['marker_position'][0]:.6f}, {st.session_state['marker_position'][1]:.6f}")
             else:
                 # Si no hay marcador, usar el valor del input si existe
@@ -2391,5 +2393,4 @@ elif opcion == "Exportar Datos":
                 st.error(f"Error al exportar a JSON: {str(e)}")
     else:
         st.info("No hay propiedades registradas para exportar.")
-
 
