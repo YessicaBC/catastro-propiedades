@@ -2174,9 +2174,9 @@ elif opcion == "Exportar Datos":
         # Crear DataFrame con los datos
         df = pd.DataFrame(propiedades['datos'])
         
-        # Exportar a Excel usando BytesIO
+        # Exportar a Excel usando BytesIO con openpyxl
         excel_buffer = io.BytesIO()
-        with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Propiedades')
         excel_data = excel_buffer.getvalue()
         
