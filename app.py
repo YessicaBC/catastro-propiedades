@@ -1579,7 +1579,7 @@ if opcion == "Agregar Propiedad":
                 # Botones de confirmación
                 col1, col2, _ = st.columns([1, 1, 3])
                 with col1:
-                    if st.button("✅ Confirmar eliminación", key=f"confirmar_si_{propiedad_id}", type="primary"):
+                    if st.button("✅ Confirmar eliminación", key=f"confirmar_si_{propiedad_id}"):
                         conn = None
                         try:
                             conn = get_db_connection()
