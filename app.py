@@ -1,11 +1,15 @@
-import sys
 import os
+import sys
 from pathlib import Path
 
-# Agregar el directorio actual al path para que Python encuentre los módulos
-current_dir = Path(__file__).parent
-sys.path.append(str(current_dir))
+# Configuración de rutas
+BASE_DIR = Path(__file__).parent
+os.chdir(BASE_DIR)  # Cambiar al directorio del script
 
+# Agregar el directorio actual al path
+sys.path.insert(0, str(BASE_DIR))
+
+# Ahora importamos los demás módulos
 import streamlit as st
 import folium
 from streamlit_folium import folium_static, st_folium
@@ -21,15 +25,11 @@ import io
 
 # Importar funciones de la base de datos
 try:
+    # Intentar importación estándar
     from db_utils import init_db, get_db_connection
-except ImportError:
-    # Si falla, intentar con la ruta absoluta
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("db_utils", str(current_dir / "db_utils.py"))
-    db_utils = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(db_utils)
-    init_db = db_utils.init_db
-    get_db_connection = db_utils.get_db_connection
+except ImportError as e:
+    st.error(f"Error al importar db_utils: {e}")
+    st.stop()
 
 # Inicializar la base de datos al inicio
 if not init_db():
