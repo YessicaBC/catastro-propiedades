@@ -13,6 +13,14 @@ import sqlite3
 from sqlite3 import Error
 import io
 
+# Importar funciones de la base de datos
+from db_utils import init_db, get_db_connection
+
+# Inicializar la base de datos al inicio
+if not init_db():
+    st.error("No se pudo inicializar la base de datos. Por favor, verifica los permisos del directorio.")
+    st.stop()
+
 # Inicializar estado de la sesión
 if 'opcion_seleccionada' not in st.session_state:
     st.session_state.opcion_seleccionada = "🏠 Inicio"
