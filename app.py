@@ -1539,7 +1539,7 @@ if opcion == "Agregar Propiedad":
                         del st.session_state['marker_position']
                     
                     # Forzar recarga para limpiar el formulario
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("❌ Error al guardar la propiedad. Por favor intente nuevamente.")
         
