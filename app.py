@@ -1555,7 +1555,7 @@ if opcion == "Agregar Propiedad":
             propiedad_info = st.session_state['propiedad_editar']
             
             # Mostrar diálogo de confirmación
-            if st.button(f"🗑️ Eliminar Propiedad", key=f"btn_eliminar_{propiedad_id}", type="primary"):
+            if st.button(f"🗑️ Eliminar Propiedad", key=f"btn_eliminar_{propiedad_id}"):
                 st.session_state[f'mostrar_confirmacion_eliminar_{propiedad_id}'] = True
             
             # Mostrar diálogo de confirmación si está activo
@@ -1767,7 +1767,7 @@ elif opcion == "Ver/Editar Propiedades":
                         
                         # Mostrar diálogo de confirmación
                         if not st.session_state[f'confirmar_eliminar_{propiedad_id}']:
-                            if st.button(f"🗑️ Eliminar {propiedad_id}", key=f"btn_eliminar_{propiedad_id}", type="primary"):
+                            if st.button(f"🗑️ Eliminar {propiedad_id}", key=f"btn_eliminar_{propiedad_id}"):
                                 st.session_state[f'confirmar_eliminar_{propiedad_id}'] = True
                                 st.rerun()
                         else:
@@ -1790,7 +1790,7 @@ elif opcion == "Ver/Editar Propiedades":
                             # Botones de confirmación
                             col1, col2, _ = st.columns([1, 1, 3])
                             with col1:
-                                if st.button("✅ Confirmar eliminación", key=f"confirmar_si_{propiedad_id}", type="primary"):
+                                if st.button("✅ Confirmar eliminación", key=f"confirmar_si_{propiedad_id}"):
                                     conn = None
                                     try:
                                         conn = get_db_connection()
@@ -2456,7 +2456,7 @@ elif opcion == "Gestionar Fotos":
             # Mostrar resumen de archivos seleccionados
             st.info(f"📷 {len(uploaded_files)} foto(s) seleccionada(s). Tamaño total: {sum(f.size for f in uploaded_files) / (1024*1024):.1f} MB")
             
-            if st.button("📤 Subir Fotos", type="primary", use_container_width=True):
+            if st.button("📤 Subir Fotos", use_container_width=True):
                 nuevas_fotos = []
                 total_files = len(uploaded_files)
                 
