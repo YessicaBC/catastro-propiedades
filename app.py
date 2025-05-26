@@ -1486,11 +1486,6 @@ if opcion == "Agregar Propiedad":
                 st.error("❌ Debe ingresar al menos un valor en M² Terreno o M² Construidos.")
                 st.stop()
                 
-            # Validar que los M² Construidos no sean mayores que los M² Terreno
-            if m2_construidos > m2_terreno > 0:
-                st.error("❌ Los M² Construidos no pueden ser mayores que los M² Terreno.")
-                st.stop()
-                
             # Obtener coordenadas si existen en el estado de la sesión
             coordenadas = st.session_state.get('marker_position', None)
             coordenadas_str = f"{coordenadas[0]}, {coordenadas[1]}" if coordenadas and len(coordenadas) == 2 else ""
