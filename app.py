@@ -974,6 +974,12 @@ if opcion == "Agregar Propiedad":
         # Verificar si estamos en modo edición
         modo_edicion = 'propiedad_editar' in st.session_state and st.session_state['propiedad_editar'] is not None
         
+        # Mostrar mensaje de éxito si existe
+        if 'mensaje_exito' in st.session_state and st.session_state['mensaje_exito']:
+            st.success(st.session_state['mensaje_exito'])
+            # Limpiar el mensaje después de mostrarlo
+            del st.session_state['mensaje_exito']
+        
         # Cargar datos de la propiedad si estamos en modo edición
         if modo_edicion:
             propiedad = st.session_state['propiedad_editar']
@@ -1441,7 +1447,7 @@ if opcion == "Agregar Propiedad":
                         # Limpiar la propiedad en edición
                         if 'propiedad_editar' in st.session_state:
                             del st.session_state['propiedad_editar']
-                        st.experimental_rerun()
+                        st.rerun()
             else:
                 submitted = st.form_submit_button("💾 Guardar Propiedad", type="primary", use_container_width=True)
         
@@ -1520,14 +1526,14 @@ if opcion == "Agregar Propiedad":
                 propiedad_id = guardar_propiedad(propiedad)
                 
                 if propiedad_id:
-                    # Mostrar mensaje de éxito
+                    # Guardar mensaje de éxito en la sesión
                     if modo_edicion:
-                        st.success("✅ Propiedad actualizada exitosamente!")
+                        st.session_state['mensaje_exito'] = "✅ Propiedad actualizada exitosamente!"
                         # Limpiar la propiedad en edición
                         if 'propiedad_editar' in st.session_state:
                             del st.session_state['propiedad_editar']
                     else:
-                        st.success("✅ Propiedad guardada exitosamente!")
+                        st.session_state['mensaje_exito'] = "✅ Propiedad guardada exitosamente!"
                     
                     # Limpiar el formulario
                     for key in list(st.session_state.keys()):
@@ -1837,7 +1843,7 @@ elif opcion == "Ver/Editar Propiedades":
                                 # Cambiar a la pestaña de Agregar Propiedad
                                 st.session_state['opcion_seleccionada'] = "Agregar Propiedad"
                                 # Forzar recarga para mostrar el formulario de edición
-                                st.experimental_rerun()
+                                st.rerun()
                         with col2:
                             # Llamar a la función de eliminación
                             eliminar_propiedad(row['id'], row)
@@ -1887,43 +1893,63 @@ elif opcion == "Ver/Editar Propiedades":
                 icon_create_function=None
             ).add_to(m)
             
+            # Contador para depuración
+            total_propiedades = len(propiedades['datos'])
+            sin_coordenadas = 0
+            coordenadas_invalidas = 0
+            marcadores_agregados = 0
+            
             # Agregar marcadores para cada propiedad con coordenadas válidas
+            st.write(f"Total de propiedades: {total_propiedades}")
+            
             for propiedad in propiedades['datos']:
                 # Verificar si la propiedad tiene coordenadas y son válidas
                 coordenadas = propiedad.get('Coordenadas') or propiedad.get('coordenadas')
-                if coordenadas and isinstance(coordenadas, str):
-                    coords = parse_coordenadas(coordenadas)
-                    if coords:
-                        # Crear contenido HTML para el popup
-                        popup_html = f"""
-                        <div style="width: 250px;">
-                            <h4 style="margin: 5px 0; color: #1e3d59;">📌 {propiedad.get('Dirección', 'Sin dirección')}</h4>
-                            <hr style="margin: 5px 0; border: 0.5px solid #ddd;">
-                            <p style="margin: 3px 0; font-size: 13px;">
-                                <strong>ROL:</strong> {propiedad.get('ROL Propiedad', 'N/A')}<br>
-                                <strong>Propietario:</strong> {propiedad.get('Propietario', 'N/A')}<br>
-                                <strong>RUT:</strong> {propiedad.get('RUT', 'N/A')}<br>
-                                <strong>M² Terreno:</strong> {propiedad.get('M² Terreno', 'N/A')}<br>
-                                <strong>M² Construidos:</strong> {propiedad.get('M² Construidos', 'N/A')}<br>
-                                <strong>Fiscalización DOM:</strong> {propiedad.get('Fiscalización DOM', 'N/A')}
-                            </p>
-                        """
-                        
-                        # Crear iframe para el popup
-                        iframe = folium.IFrame(html=popup_html, width=280, height=180)
-                        popup = folium.Popup(iframe, max_width=300)
-                        
-                        # Crear marcador con popup personalizado
-                        folium.Marker(
-                            location=coords,
-                            popup=popup,
-                            icon=folium.Icon(
-                                color='blue',
-                                icon='home' if propiedad.get('Destino DOM') == 'Habitacional' else 'info-sign',
-                                prefix='fa'
-                            ),
-                            tooltip=f"Ver detalles de {propiedad.get('Dirección', 'la propiedad')}"
-                        ).add_to(marker_cluster)
+                
+                if not coordenadas or not isinstance(coordenadas, str):
+                    sin_coordenadas += 1
+                    continue
+                    
+                coords = parse_coordenadas(coordenadas)
+                
+                if not coords:
+                    coordenadas_invalidas += 1
+                    st.warning(f"Coordenadas inválidas para propiedad {propiedad.get('id')}: {coordenadas}")
+                    continue
+                    
+                # Si llegamos aquí, las coordenadas son válidas
+                marcadores_agregados += 1
+                
+                # Crear contenido HTML para el popup
+                popup_html = f"""
+                <div style="width: 250px;">
+                    <h4 style="margin: 5px 0; color: #1e3d59;">📌 {propiedad.get('Dirección', 'Sin dirección')}</h4>
+                    <hr style="margin: 5px 0; border: 0.5px solid #ddd;">
+                    <p style="margin: 3px 0; font-size: 13px;">
+                        <strong>ROL:</strong> {propiedad.get('ROL Propiedad', 'N/A')}<br>
+                        <strong>Propietario:</strong> {propiedad.get('Propietario', 'N/A')}<br>
+                        <strong>RUT:</strong> {propiedad.get('RUT', 'N/A')}<br>
+                        <strong>M² Terreno:</strong> {propiedad.get('M² Terreno', 'N/A')}<br>
+                        <strong>M² Construidos:</strong> {propiedad.get('M² Construidos', 'N/A')}<br>
+                        <strong>Fiscalización DOM:</strong> {propiedad.get('Fiscalización DOM', 'N/A')}
+                    </p>
+                """
+                
+                # Crear iframe para el popup
+                iframe = folium.IFrame(html=popup_html, width=280, height=180)
+                popup = folium.Popup(iframe, max_width=300)
+                
+                # Crear marcador con popup personalizado
+                folium.Marker(
+                    location=coords,
+                    popup=popup,
+                    icon=folium.Icon(
+                        color='blue',
+                        icon='home' if propiedad.get('Destino DOM') == 'Habitacional' else 'info-sign',
+                        prefix='fa'
+                    ),
+                    tooltip=f"Ver detalles de {propiedad.get('Dirección', 'la propiedad')}"
+                ).add_to(marker_cluster)
             
             # Añadir control de capas
             folium.LayerControl().add_to(m)
@@ -1935,6 +1961,18 @@ elif opcion == "Ver/Editar Propiedades":
                 title_cancel="Salir de pantalla completa",
                 force_separate_button=True
             ).add_to(m)
+            
+            # Mostrar resumen de depuración
+            with st.expander("🔍 Información de Depuración", expanded=False):
+                st.write("### 📊 Estadísticas de Propiedades")
+                st.write(f"- Total de propiedades: {total_propiedades}")
+                st.write(f"- Propiedades sin coordenadas: {sin_coordenadas}")
+                st.write(f"- Coordenadas inválidas: {coordenadas_invalidas}")
+                st.write(f"- Marcadores agregados: {marcadores_agregados}")
+                
+                if marcadores_agregados == 0:
+                    st.warning("⚠️ No se encontraron propiedades con coordenadas válidas para mostrar en el mapa.")
+                    st.info("Asegúrate de que las propiedades tengan coordenadas en el formato correcto (latitud, longitud).")
             
             # Mostrar el mapa
             folium_static(m, width=1200, height=700)
