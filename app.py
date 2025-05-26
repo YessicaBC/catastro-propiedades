@@ -1307,12 +1307,31 @@ if opcion == "Agregar Propiedad":
             coordenadas = ""
             
             # Actualizar el campo de coordenadas con la posición del marcador
-            if 'marker_position' in st.session_state:
-                coordenadas = f"{st.session_state['marker_position'][0]}, {st.session_state['marker_position'][1]}"
-                # Solo actualizar si es diferente para evitar ciclos de renderizado
-                if 'coordenadas_input' not in st.session_state or st.session_state.coordenadas_input != coordenadas:
-                    st.session_state.coordenadas_input = coordenadas
-                st.markdown(f"**Ubicación seleccionada:** {st.session_state['marker_position'][0]:.6f}, {st.session_state['marker_position'][1]:.6f}")
+            if 'marker_position' in st.session_state and st.session_state['marker_position'] is not None:
+                try:
+                    # Verificar que marker_position tenga los valores esperados
+                    if (isinstance(st.session_state['marker_position'], (list, tuple)) and 
+                        len(st.session_state['marker_position']) >= 2 and 
+                        all(isinstance(x, (int, float)) for x in st.session_state['marker_position'][:2])):
+                        
+                        lat, lon = st.session_state['marker_position'][:2]
+                        coordenadas = f"{lat}, {lon}"
+                        
+                        # Solo actualizar si es diferente para evitar ciclos de renderizado
+                        if 'coordenadas_input' not in st.session_state or st.session_state.get('coordenadas_input') != coordenadas:
+                            st.session_state.coordenadas_input = coordenadas
+                        
+                        st.markdown(f"**Ubicación seleccionada:** {lat:.6f}, {lon:.6f}")
+                    else:
+                        # Si el formato no es el esperado, limpiar el marcador
+                        st.session_state['marker_position'] = None
+                        coordenadas = st.session_state.get('coordenadas_input', '')
+                        st.markdown("**Ubicación seleccionada:** Formato inválido")
+                except Exception as e:
+                    st.error(f"Error al procesar las coordenadas: {str(e)}")
+                    st.session_state['marker_position'] = None
+                    coordenadas = st.session_state.get('coordenadas_input', '')
+                    st.markdown("**Ubicación seleccionada:** Error")
             else:
                 # Si no hay marcador, usar el valor del input si existe
                 coordenadas = st.session_state.get('coordenadas_input', '')
@@ -2393,4 +2412,5 @@ elif opcion == "Exportar Datos":
                 st.error(f"Error al exportar a JSON: {str(e)}")
     else:
         st.info("No hay propiedades registradas para exportar.")
+
 
