@@ -1,3 +1,10 @@
+import sys
+import os
+from pathlib import Path
+
+# Agregar el directorio actual al path para que Python encuentre los módulos
+sys.path.append(str(Path(__file__).parent))
+
 import streamlit as st
 import folium
 from streamlit_folium import folium_static, st_folium
@@ -6,9 +13,7 @@ import plotly.graph_objects as go
 import time
 import pandas as pd
 from datetime import datetime
-import os
 import json
-from pathlib import Path
 import sqlite3
 from sqlite3 import Error
 import io
@@ -2309,4 +2314,5 @@ elif opcion == "Exportar Datos":
                 st.error(f"Error al exportar a JSON: {str(e)}")
     else:
         st.info("No hay propiedades registradas para exportar.")
+
 
