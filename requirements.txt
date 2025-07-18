@@ -1,6 +1,15 @@
-streamlit
-pandas
-openpyxl
-folium
-streamlit-folium
-plotly
+# Dependencias principales
+streamlit>=1.32.0
+pandas>=2.2.0
+openpyxl>=3.1.0
+folium>=0.15.0
+streamlit-folium>=0.15.0
+requests>=2.31.0
+plotly>=5.18.0
+notion-client>=2.3.0
+xlsxwriter>=3.1.0
+
+# Dependencias para producción
+gunicorn>=20.1.0
+psycopg2-binary>=2.9.5
+python-dotenv>=1.0.0
