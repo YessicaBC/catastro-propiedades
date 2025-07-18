@@ -14,11 +14,27 @@ from sqlite3 import Error
 import streamlit as st
 from streamlit_folium import folium_static, st_folium
 
-# ===== CÓDIGO DE DB_UTILS.PY =====
-# Configuración de la base de datos
-DB_DIR = Path.home() / '.catastro_propiedades'
+# Configuración para Heroku
+if 'DYNO' in os.environ:
+    # Configuración para producción en Heroku
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    
+    # Configurar el puerto para Heroku
+    PORT = int(os.environ.get('PORT', 8501))
+    
+    # Configurar la base de datos para producción (si es necesario)
+    DB_DIR = Path('/tmp/catastro_propiedades')
+else:
+    # Configuración para desarrollo local
+    DB_DIR = Path.home() / '.catastro_propiedades'
+    
+# Asegurar que el directorio de la base de datos exista
 DB_DIR.mkdir(exist_ok=True, parents=True)
 DB_PATH = str(DB_DIR / 'catastro_propiedades.db')
+
+# ===== CÓDIGO DE DB_UTILS.PY =====
+# La configuración de la base de datos ya se hizo al inicio del archivo
 
 def get_db_connection():
     """Crea una conexión a la base de datos SQLite"""
@@ -379,6 +395,7 @@ def init_db():
             
             conn.commit()
             return True
+            
         except Error as e:
             st.error(f"Error al inicializar la base de datos: {e}")
             return False
@@ -448,7 +465,7 @@ def guardar_propiedad(propiedad):
                     destino_sii, destino_dom, patente_comercial, num_contacto,
                     coordenadas, fiscalizacion_dom, m2_terreno, m2_construidos,
                     linea_construccion, ano_construccion, expediente_dom, observaciones
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     rut,
                     propiedad.get('Propietario', ''), 
@@ -769,6 +786,22 @@ if opcion == "Inicio":
         # Agregar control de capas
         folium.LayerControl().add_to(m)
         
+        # Agregar control de pantalla completa
+        folium.plugins.Fullscreen(
+            position="topright",
+            title="Pantalla completa",
+            title_cancel="Salir de pantalla completa",
+            force_separate_button=True
+        ).add_to(m)
+        
+        # Agregar control de geolocalización
+        folium.plugins.LocateControl(
+            position="topright",
+            draw_marker=True,
+            locate_options={"enableHighAccuracy": True, "timeout": 10000},
+            strings={"title": "Mi ubicación"}
+        ).add_to(m)
+        
         # Contenedor principal para el contenido de la página de inicio
         st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
         
@@ -994,7 +1027,6 @@ if opcion == "Agregar Propiedad":
                 
             col1, col2 = st.columns([1, 2])
             
-            # Columna 1
             with col1:
                 # Validación de RUT en tiempo real
                 rut_container = st.container()
@@ -1121,20 +1153,35 @@ if opcion == "Agregar Propiedad":
                         unsafe_allow_html=True
                     )
                 
-                # Campo Avalúo con validación
+                # Campo Avalúo con validación como campo de texto y signo peso
                 avaluo_container = st.container()
-                avaluo = avaluo_container.number_input(
-                    "Avalúo Total", 
-                    min_value=0, 
-                    step=1000, 
-                    format="%d", 
-                    value=int(propiedad.get('Avalúo Total', 0)) if modo_edicion and propiedad.get('Avalúo Total') else 0,
-                    key="avaluo_input"
+                avaluo_valor = f"${int(propiedad.get('Avalúo Total', 0)):,}".replace(",", ".") if modo_edicion and propiedad.get('Avalúo Total') else ""
+                avaluo_input = avaluo_container.text_input(
+                    "Avalúo Total",
+                    value=avaluo_valor,
+                    key="avaluo_input",
+                    placeholder="$"
                 )
+                
+                # Validar y formatear el valor ingresado
+                if avaluo_input:
+                    # Eliminar puntos de miles y el signo peso para validar
+                    valor_limpio = avaluo_input.replace("$", "").replace(".", "").strip()
+                    if not valor_limpio.isdigit():
+                        avaluo_container.error("Por favor ingrese un valor numérico válido")
+                        avaluo = 0
+                    else:
+                        avaluo = int(valor_limpio)
+                        # Formatear el valor con separadores de miles
+                        avaluo_input = f"${int(valor_limpio):,}".replace(",", ".")
+                else:
+                    avaluo = 0
+                
+                # Aplicar estilos de validación
                 avaluo_container.markdown(
                     f"""
                     <style>
-                        div[data-testid="stNumberInput"]:has(> div > label:contains("Avalúo Total")) > div > div > input {{
+                        div[data-testid="stTextInput"]:has(> label[data-testid="stWidgetLabel"]:contains("Avalúo Total")) > div > div > input {{
                             {'border-left: 4px solid #4CAF50 !important;' if avaluo > 0 else 'border-left: 4px solid #f44336 !important;'}
                             padding-left: 8px !important;
                         }}
@@ -1241,21 +1288,31 @@ if opcion == "Agregar Propiedad":
             # Lista para almacenar los valores de cada línea
             lineas_construccion = []
             
-            # Crear 6 filas de campos
-            for i in range(1, 7):
+            # Crear 12 filas de campos
+            for i in range(1, 13):
                 st.markdown(f"**Línea {i}**")
-                col1, col2, col3 = st.columns(3)
+                col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
                 
                 with col1:
                     materialidad = st.selectbox(
                         f"Materialidad {i}",
-                        options=["", "Hormigón", "Acero", "Madera", "Mixto", "Otro"],
+                        options=["", "Acero", "Hormigón", "Albañilería", "Madera", "Adobe", 
+                               "Construcción Liviana", "Construcción Estructural Soportante"],
                         index=0,
                         key=f"materialidad_{i}",
                         help=f"Seleccione el material principal de construcción para la línea {i}"
                     )
                 
                 with col2:
+                    categoria = st.selectbox(
+                        f"Categoría {i}",
+                        options=[""] + [str(x) for x in range(1, 6)],
+                        index=0,
+                        key=f"categoria_{i}",
+                        help=f"Seleccione la categoría para la línea {i}"
+                    )
+                
+                with col3:
                     año = st.selectbox(
                         f"Año {i}",
                         options=[""] + list(range(datetime.now().year, 1800, -1)),
@@ -1264,7 +1321,7 @@ if opcion == "Agregar Propiedad":
                         help=f"Año de construcción para la línea {i}"
                     )
                 
-                with col3:
+                with col4:
                     # Usar number_input con el mismo formato que M² Construidos
                     m2 = st.number_input(
                         f"M² {i}",
@@ -1277,10 +1334,12 @@ if opcion == "Agregar Propiedad":
                     )
                 
                 # Agregar a la lista si al menos un campo tiene valor
-                if materialidad or año or m2 is not None:
+                if materialidad or categoria or año or m2 is not None:
                     # Formatear M² con dos decimales si tiene valor
                     m2_display = f"{m2:.2f} m²" if m2 is not None else ""
-                    linea = f"{materialidad} {año} {m2_display}".strip()
+                    # Incluir la categoría en la línea si está presente
+                    categoria_display = f"Categoría {categoria}" if categoria else ""
+                    linea = f"{materialidad} {categoria_display} {año} {m2_display}".strip()
                     lineas_construccion.append(linea)
                 
                 # Agregar un pequeño espacio entre líneas
@@ -1291,6 +1350,14 @@ if opcion == "Agregar Propiedad":
         
         # Sección 5: Ubicación
         with st.expander("📍 Ubicación en Mapa", expanded=False):
+            # Inicializar el estado de la sesión para el mapa si no existe
+            if 'map_center' not in st.session_state:
+                st.session_state['map_center'] = [-33.4172, -70.6506]  # Coordenadas por defecto de Independencia
+            if 'marker_position' not in st.session_state:
+                st.session_state['marker_position'] = None
+            if 'coordenadas_input' not in st.session_state:
+                st.session_state['coordenadas_input'] = ""
+            
             # Usar columnas para organizar la entrada de coordenadas y el botón
             col1, col2 = st.columns([3, 1])
             
@@ -1298,27 +1365,26 @@ if opcion == "Agregar Propiedad":
                 # Campo de entrada para coordenadas manuales
                 coordenadas_input = st.text_input(
                     "Coordenadas (Lat, Long)", 
-                    key="coordenadas_input",
+                    key="coordenadas_input_key",
+                    value=st.session_state.get('coordenadas_input', ''),
                     placeholder="Ej: -33.4172, -70.6506",
                     help="Ingrese las coordenadas manualmente o seleccione una ubicación en el mapa"
                 )
+                
+                # Actualizar el estado de la sesión cuando cambia el input
+                if coordenadas_input != st.session_state.get('coordenadas_input', ''):
+                    st.session_state['coordenadas_input'] = coordenadas_input
             
             with col2:
                 # Botón para centrar el mapa en la ubicación actual
                 st.markdown("<div style='margin-top: 27px;'></div>", unsafe_allow_html=True)
                 buscar_mapa = st.form_submit_button("🔍 Buscar en mapa", use_container_width=True, type="secondary")
-                if buscar_mapa and coordenadas_input:
-                    coords = parse_coordenadas(coordenadas_input)
+                if buscar_mapa and st.session_state.get('coordenadas_input'):
+                    coords = parse_coordenadas(st.session_state['coordenadas_input'])
                     if coords:
                         st.session_state['map_center'] = coords
                         st.session_state['marker_position'] = coords
                         st.rerun()
-            
-            # Inicializar el estado de la sesión para el mapa si no existe
-            if 'map_center' not in st.session_state:
-                st.session_state['map_center'] = [-33.4172, -70.6506]  # Coordenadas por defecto de Independencia
-            if 'marker_position' not in st.session_state:
-                st.session_state['marker_position'] = None
             
             # Crear el mapa interactivo
             m = folium.Map(location=st.session_state['map_center'], zoom_start=15)
@@ -1544,7 +1610,7 @@ if opcion == "Agregar Propiedad":
                 else:
                     st.error("❌ Error al guardar la propiedad. Por favor intente nuevamente.")
         
-        # Sección 7: Eliminar Propiedad (solo en modo edición)
+        # Sección 7: Eliminar Propiedad (solo en modo edición) - Fuera del formulario
         if modo_edicion and 'propiedad_editar' in st.session_state and 'id' in st.session_state['propiedad_editar']:
             propiedad_id = st.session_state['propiedad_editar']['id']
             propiedad_info = st.session_state['propiedad_editar']
@@ -1657,7 +1723,7 @@ elif opcion == "Ver/Editar Propiedades":
                 'RUT': 'rut',
                 'Propietario': 'propietario',
                 'ROL Propiedad': 'rol_propiedad',
-                'Dirección': 'dirección'
+                'Dirección': 'direccion'
             }
             
             # Columnas específicas para filtrar (nombres amigables)
@@ -1831,10 +1897,34 @@ elif opcion == "Ver/Editar Propiedades":
                     # Mostrar botones de acción para cada propiedad
                     for idx, row in display_df.iterrows():
                         col1, col2 = st.columns([1, 1])
+                        
                         with col1:
                             if st.button(f"✏️ Editar {row['id']}", key=f"editar_{row['id']}"):
-                                # Guardar los datos de la propiedad a editar en session_state
-                                st.session_state['propiedad_editar'] = row.to_dict()
+                                # Convertir la fila a diccionario
+                                propiedad_editar = row.to_dict()
+                                
+                                # Mapear nombres de columnas a mayúsculas para consistencia con el formulario
+                                mapeo_columnas = {
+                                    'id': 'ID',
+                                    'rut': 'RUT',
+                                    'propietario': 'Propietario',
+                                    'direccion': 'Dirección',
+                                    'rol': 'ROL',
+                                    'tipo_propiedad': 'Tipo de Propiedad',
+                                    'estado_fiscalizacion': 'Estado de Fiscalización',
+                                    # Agrega aquí más mapeos según sea necesario
+                                }
+                                
+                                # Crear nuevo diccionario con las claves mapeadas
+                                propiedad_editar_mapeada = {}
+                                for key, value in propiedad_editar.items():
+                                    # Usar el nombre mapeado si existe, de lo contrario mantener el original
+                                    new_key = mapeo_columnas.get(key.lower(), key)
+                                    propiedad_editar_mapeada[new_key] = value
+                                
+                                # Guardar los datos en session_state
+                                st.session_state['propiedad_editar'] = propiedad_editar_mapeada
+                                
                                 # Cambiar a la pestaña de Agregar Propiedad
                                 st.session_state['opcion_seleccionada'] = "Agregar Propiedad"
                                 # Forzar recarga para mostrar el formulario de edición
@@ -1916,19 +2006,27 @@ elif opcion == "Ver/Editar Propiedades":
                 marcadores_agregados += 1
                 
                 # Crear contenido HTML para el popup
-                popup_html = f"""
+                popup_html = """
                 <div style="width: 250px;">
-                    <h4 style="margin: 5px 0; color: #1e3d59;">📌 {propiedad.get('Dirección', 'Sin dirección')}</h4>
+                    <h4 style="margin: 5px 0; color: #1e3d59;">📌 {direccion}</h4>
                     <hr style="margin: 5px 0; border: 0.5px solid #ddd;">
                     <p style="margin: 3px 0; font-size: 13px;">
-                        <strong>ROL:</strong> {propiedad.get('ROL Propiedad', 'N/A')}<br>
-                        <strong>Propietario:</strong> {propiedad.get('Propietario', 'N/A')}<br>
-                        <strong>RUT:</strong> {propiedad.get('RUT', 'N/A')}<br>
-                        <strong>M² Terreno:</strong> {propiedad.get('M² Terreno', 'N/A')}<br>
-                        <strong>M² Construidos:</strong> {propiedad.get('M² Construidos', 'N/A')}<br>
-                        <strong>Fiscalización DOM:</strong> {propiedad.get('Fiscalización DOM', 'N/A')}
+                        <strong>ROL:</strong> {rol}<br>
+                        <strong>Propietario:</strong> {propietario}<br>
+                        <strong>RUT:</strong> {rut}<br>
+                        <strong>M² Terreno:</strong> {m2_terreno}<br>
+                        <strong>M² Construidos:</strong> {m2_construidos}<br>
+                        <strong>Fiscalización DOM:</strong> {fiscalizacion}
                     </p>
-                """
+                """.format(
+                    direccion=propiedad.get('direccion', 'Sin dirección'),
+                    rol=propiedad.get('rol_propiedad', 'N/A'),
+                    propietario=propiedad.get('propietario', 'N/A'),
+                    rut=propiedad.get('rut', 'N/A'),
+                    m2_terreno=propiedad.get('m2_terreno', 'N/A'),
+                    m2_construidos=propiedad.get('m2_construidos', 'N/A'),
+                    fiscalizacion=propiedad.get('fiscalizacion_dom', 'N/A')
+                )
                 
                 # Crear iframe para el popup
                 iframe = folium.IFrame(html=popup_html, width=280, height=180)
@@ -1940,10 +2038,10 @@ elif opcion == "Ver/Editar Propiedades":
                     popup=popup,
                     icon=folium.Icon(
                         color='blue',
-                        icon='home' if propiedad.get('Destino DOM') == 'Habitacional' else 'info-sign',
+                        icon='home' if propiedad.get('destino_dom') == 'Habitacional' else 'info-sign',
                         prefix='fa'
                     ),
-                    tooltip=f"Ver detalles de {propiedad.get('Dirección', 'la propiedad')}"
+                    tooltip=f"Ver detalles de {propiedad.get('direccion', 'la propiedad')}"
                 ).add_to(marker_cluster)
             
             # Añadir control de capas
@@ -1957,6 +2055,14 @@ elif opcion == "Ver/Editar Propiedades":
                 force_separate_button=True
             ).add_to(m)
             
+            # Añadir control de geolocalización
+            folium.plugins.LocateControl(
+                position="topright",
+                draw_marker=True,
+                locate_options={"enableHighAccuracy": True, "timeout": 10000},
+                strings={"title": "Mi ubicación"}
+            ).add_to(m)
+            
             # Mostrar resumen de depuración
             with st.expander("🔍 Información de Depuración", expanded=False):
                 st.write("### 📊 Estadísticas de Propiedades")
@@ -1967,7 +2073,7 @@ elif opcion == "Ver/Editar Propiedades":
                 
                 if marcadores_agregados == 0:
                     st.warning("⚠️ No se encontraron propiedades con coordenadas válidas para mostrar en el mapa.")
-                    st.info("Asegúrate de que las propiedades tengan coordenadas en el formato correcto (latitud, longitud).")
+                    st.info("Asegúrese de que las propiedades tengan coordenadas en el formato correcto (latitud, longitud).")
             
             # Mostrar el mapa
             folium_static(m, width=1200, height=700)
@@ -1980,7 +2086,7 @@ elif opcion == "Ver/Editar Propiedades":
             fiscalizadas_count = {}
             for propiedad in propiedades['datos']:
                 # Usar get() con valor por defecto 'No Especificada' si la clave no existe
-                fiscalizacion_dom = propiedad.get('Fiscalización DOM', 'No Especificada')
+                fiscalizacion_dom = propiedad.get('fiscalizacion_dom', 'No Especificada')
                 # Si el valor es None o vacío, usar 'No Especificada'
                 if not fiscalizacion_dom:
                     fiscalizacion_dom = 'No Especificada'
@@ -2122,8 +2228,8 @@ elif opcion == "Ver/Editar Propiedades":
                 if not propiedades['datos'].empty:
                     cross_tab = {}
                     for propiedad in propiedades['datos']:
-                        fiscalizacion_dom = propiedad['Fiscalización DOM']
-                        patente_comercial = propiedad['Patente Comercial']
+                        fiscalizacion_dom = propiedad['fiscalizacion_dom']
+                        patente_comercial = propiedad['patente_comercial']
                         if fiscalizacion_dom in cross_tab:
                             if patente_comercial in cross_tab[fiscalizacion_dom]:
                                 cross_tab[fiscalizacion_dom][patente_comercial] += 1
@@ -2152,13 +2258,90 @@ elif opcion == "Buscar Propiedades":
     busqueda = st.text_input("Ingrese término de búsqueda (RUT, Propietario, Dirección, ROL Propiedad)")
     
     if busqueda:
-        resultado = obtener_propiedades(filtros={'rut': busqueda, 'propietario': busqueda, 'direccion': busqueda, 'rol_propiedad': busqueda})
+        # Crear un diccionario de filtros con el término de búsqueda para cada campo relevante
+        filtros = {
+            'RUT': busqueda,
+            'propietario': busqueda,
+            'direccion': busqueda,
+            'rol_propiedad': busqueda
+        }
         
-        if len(resultado['datos']) > 0:
-            st.write(resultado['datos'])
-        else:
-            st.info("No se encontraron propiedades que coincidan con la búsqueda.")
-
+        # Obtener propiedades que coincidan con cualquiera de los criterios
+        query = """
+            SELECT * FROM propiedades 
+            WHERE RUT LIKE ? 
+               OR propietario LIKE ? 
+               OR direccion LIKE ?
+               OR rol_propiedad LIKE ?
+            ORDER BY fecha_creacion DESC
+        """
+        
+        conn = get_db_connection()
+        if conn is not None:
+            try:
+                cursor = conn.cursor()
+                
+                # Usar el mismo término de búsqueda para todos los campos con comodines
+                search_term = f"%{busqueda}%"
+                cursor.execute(query, (search_term, search_term, search_term, search_term))
+                
+                # Obtener los nombres de las columnas
+                columnas = [desc[0] for desc in cursor.description]
+                
+                # Crear lista de diccionarios con los resultados
+                propiedades = []
+                for fila in cursor.fetchall():
+                    propiedad = dict(zip(columnas, fila))
+                    
+                    # Obtener fotos para la propiedad
+                    cursor.execute(
+                        'SELECT ruta_archivo FROM fotos WHERE propiedad_id = ?',
+                        (propiedad['id'],)
+                    )
+                    fotos = [foto[0] for foto in cursor.fetchall()]
+                    propiedad['Fotos'] = fotos
+                    propiedad['Miniatura'] = fotos[0] if fotos else None
+                    
+                    propiedades.append(propiedad)
+                
+                # Mostrar resultados
+                if propiedades:
+                    st.success(f"✅ Se encontraron {len(propiedades)} propiedades que coinciden con la búsqueda.")
+                    
+                    # Mostrar las propiedades encontradas en un formato legible
+                    for i, prop in enumerate(propiedades, 1):
+                        with st.expander(f"Propiedad {i}: {prop.get('direccion', 'Sin dirección')}", expanded=(i==1)):
+                            col1, col2 = st.columns([1, 2])
+                            
+                            with col1:
+                                if prop.get('Miniatura'):
+                                    st.image(
+                                        prop['Miniatura'],
+                                        caption=f"Propiedad {i}",
+                                        use_container_width=True
+                                    )
+                                else:
+                                    st.info("No hay imágenes disponibles para esta propiedad.")
+                            
+                            with col2:
+                                st.write(f"**RUT:** {prop.get('RUT', 'No especificado')}")
+                                st.write(f"**Propietario:** {prop.get('propietario', 'No especificado')}")
+                                st.write(f"**Dirección:** {prop.get('direccion', 'No especificada')}")
+                                st.write(f"**ROL Propiedad:** {prop.get('rol_propiedad', 'No especificado')}")
+                                st.write(f"**Avalúo Total:** ${prop.get('avaluo_total', 0):,}".replace(",", "."))
+                                
+                                # Botón para ver más detalles
+                                if st.button(f"Ver detalles completos - Propiedad {i}"):
+                                    # Aquí podrías redirigir a una vista detallada o mostrar más información
+                                    st.session_state['propiedad_detalle'] = prop
+                                    st.rerun()
+                else:
+                    st.info("No se encontraron propiedades que coincidan con la búsqueda.")
+                
+            except Error as e:
+                st.error(f"Error al realizar la búsqueda: {e}")
+            finally:
+                conn.close()
 elif opcion == "Exportar Datos":
     st.markdown("""<h2>📊 Exportar Datos</h2>""", unsafe_allow_html=True)
     st.markdown("""<p style='color: #666; margin-bottom: 2rem;'>Exporte los datos del catastro en formato Excel</p>""", unsafe_allow_html=True)
@@ -2284,7 +2467,6 @@ elif opcion == "Gestionar Fotos":
                 display: block;
                 max-width: 90%;
                 max-height: 90%;
-                margin-top: 2%;
             }
             
             /* Botón de cierre */
@@ -2292,10 +2474,11 @@ elif opcion == "Gestionar Fotos":
                 position: absolute;
                 top: 15px;
                 right: 35px;
-                color: #f1f1f1;
+                color: #fff;
                 font-size: 40px;
                 font-weight: bold;
                 cursor: pointer;
+                transition: color 0.2s ease;
             }
             
             /* Miniaturas de fotos */
@@ -2396,23 +2579,38 @@ elif opcion == "Gestionar Fotos":
         """, unsafe_allow_html=True)
         
         # Mostrar fotos existentes
-        fotos = propiedad['Fotos'] if isinstance(propiedad['Fotos'], list) else []
-        
+        fotos = propiedad.get('Fotos', [])
+        if isinstance(fotos, str):
+            fotos = fotos.split(',') if fotos else []
+            
         if fotos:
             st.markdown("### Fotos existentes")
             st.markdown("<div class='gallery'>", unsafe_allow_html=True)
             
             for i, foto in enumerate(fotos):
-                # Mostrar miniatura
-                # Crear un botón de eliminación con Streamlit
+                # Limpiar la ruta de la foto
+                foto = foto.strip()
+                if not foto:
+                    continue
+                    
+                # Verificar si la ruta es relativa o absoluta
+                if not (foto.startswith('http') or foto.startswith('/') or foto.startswith('.')):
+                    # Si es una ruta relativa, construir la ruta completa
+                    foto_path = os.path.join('uploads', foto)
+                else:
+                    foto_path = foto
+                
+                # Mostrar miniatura con manejo de errores
                 with st.container():
                     col1, col2 = st.columns([4, 1])
                     with col1:
                         st.markdown(f"""
-                        <div style='position: relative;'>
-                            <img src='{foto}' class='thumbnail' 
-                                 onclick='openModal("{foto}")' 
-                                 style='width: 100%; height: 200px; object-fit: cover; border-radius: 5px; cursor: pointer;' />
+                        <div style='position: relative; margin-bottom: 1rem;'>
+                            <img src='{foto_path}' class='thumbnail' 
+                                 onclick='openModal("{foto_path}")' 
+                                 style='width: 100%; height: 200px; object-fit: cover; border-radius: 5px; cursor: pointer;'
+                                 onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200?text=Imagen+no+disponible';"/>
+                            <div style='margin-top: 0.5rem; font-size: 0.8rem; color: #666;'>{os.path.basename(foto_path)}</div>
                         </div>
                         """, unsafe_allow_html=True)
                     
@@ -2423,8 +2621,8 @@ elif opcion == "Gestionar Fotos":
                                    type="secondary"):
                             try:
                                 # Eliminar el archivo de la foto
-                                if os.path.exists(foto):
-                                    os.remove(foto)
+                                if os.path.exists(foto_path):
+                                    os.remove(foto_path)
                                 
                                 # Actualizar la lista de fotos en la base de datos
                                 fotos_actualizadas = [f for j, f in enumerate(fotos) if j != i]
@@ -2467,12 +2665,12 @@ elif opcion == "Gestionar Fotos":
                         # Actualizar progreso
                         progress_percent = int((i / total_files) * 100)
                         status_text.text(f"Procesando {i} de {total_files}: {uploaded_file.name[:30]}...")
-                        progress_bar.progress(progress_percent, text=f"Procesando {i} de {total_files} fotos...")
+                        progress_bar.progress(min(progress_percent, 100), text=f"Procesando {i} de {total_files} fotos...")
                         
                         # Mostrar vista previa de la imagen que se está subiendo
                         with preview_container:
                             with st.expander(f"Vista previa: {uploaded_file.name}", expanded=False):
-                                st.image(uploaded_file, caption=uploaded_file.name, use_column_width=True)
+                                st.image(uploaded_file, caption=uploaded_file.name, use_container_width=True)
                         
                         # Validar tamaño del archivo (máx 10MB)
                         if uploaded_file.size > 10 * 1024 * 1024:  # 10MB
@@ -2485,7 +2683,8 @@ elif opcion == "Gestionar Fotos":
                         # Generar nombre de archivo único
                         timestamp = int(time.time())
                         file_extension = os.path.splitext(uploaded_file.name)[1].lower()
-                        file_name = f"{propiedad['RUT']}_{timestamp}_{i}{file_extension}"
+                        # Usar el ID de la propiedad en lugar del RUT para el nombre del archivo
+                        file_name = f"prop_{propiedad.get('id', 'temp')}_{timestamp}_{i}{file_extension}"
                         file_path = os.path.join('uploads', file_name)
                         
                         # Mostrar indicador de progreso para esta foto
@@ -2493,7 +2692,7 @@ elif opcion == "Gestionar Fotos":
                             # Simular progreso para archivos pequeños
                             for _ in range(3):
                                 time.sleep(0.1)
-                                progress_bar.progress(progress_percent + 5, text=f"Subiendo {i} de {total_files}...")
+                                progress_bar.progress(min(progress_percent + 5, 100), text=f"Subiendo {i} de {total_files}...")
                             
                             # Guardar el archivo
                             with open(file_path, "wb") as f:
@@ -2506,7 +2705,7 @@ elif opcion == "Gestionar Fotos":
                         st.success(f"✓ {uploaded_file.name} subida correctamente")
                         
                     except Exception as e:
-                        st.error(f"❌ Error al procesar {uploaded_file.name}: {str(e)}")
+                        st.error(f"Error al procesar {uploaded_file.name}: {str(e)}")
                 
                 # Procesar las fotos subidas
                 if nuevas_fotos:
@@ -2540,85 +2739,3 @@ elif opcion == "Gestionar Fotos":
                 st.session_state.file_uploader_key = str(time.time())
     else:
         st.info("No hay propiedades registradas para gestionar fotos.")
-
-elif opcion == "Exportar Datos":
-    st.markdown("""
-        <div class='card' style='margin-bottom: 2rem;'>
-            <div style='display: flex; align-items: center;'>
-                <span style='font-size: 2rem; margin-right: 0.75rem;'>📊</span>
-                <div>
-                    <h2 style='margin: 0;'>Exportar Datos</h2>
-                    <p class='subheader' style='margin: 0.25rem 0 0 0;'>Exporte los datos de las propiedades a diferentes formatos</p>
-                </div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Obtener todas las propiedades
-    propiedades = obtener_propiedades(por_pagina=1000)  # Número grande para obtener todas las propiedades
-    
-    if 'datos' in propiedades and propiedades['datos']:
-        # Convertir a DataFrame para facilitar la exportación
-        df = pd.DataFrame(propiedades['datos'])
-        
-        # Mostrar vista previa de los datos
-        st.subheader("Vista previa de los datos a exportar")
-        st.dataframe(df.head())
-        
-        # Opciones de exportación
-        st.subheader("Opciones de exportación")
-        
-        # Exportar a Excel
-        if st.button("💾 Exportar a Excel", use_container_width=True):
-            try:
-                # Crear un archivo Excel en memoria
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name='Propiedades')
-                
-                # Crear un botón de descarga
-                st.download_button(
-                    label="⬇️ Descargar archivo Excel",
-                    data=output.getvalue(),
-                    file_name='propiedades_exportadas.xlsx',
-                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.error(f"Error al exportar a Excel: {str(e)}")
-        
-        # Exportar a CSV
-        if st.button("📄 Exportar a CSV", use_container_width=True):
-            try:
-                # Crear un archivo CSV en memoria
-                csv = df.to_csv(index=False, encoding='utf-8-sig')
-                
-                # Crear un botón de descarga
-                st.download_button(
-                    label="⬇️ Descargar archivo CSV",
-                    data=csv,
-                    file_name='propiedades_exportadas.csv',
-                    mime='text/csv',
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.error(f"Error al exportar a CSV: {str(e)}")
-        
-        # Exportar a JSON
-        if st.button("🔤 Exportar a JSON", use_container_width=True):
-            try:
-                # Convertir a JSON
-                json_data = df.to_json(orient='records', force_ascii=False, indent=4)
-                
-                # Crear un botón de descarga
-                st.download_button(
-                    label="⬇️ Descargar archivo JSON",
-                    data=json_data,
-                    file_name='propiedades_exportadas.json',
-                    mime='application/json',
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.error(f"Error al exportar a JSON: {str(e)}")
-    else:
-        st.info("No hay propiedades registradas para exportar.")
