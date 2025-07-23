@@ -9,6 +9,11 @@ plotly>=5.18.0
 notion-client>=2.3.0
 xlsxwriter>=3.1.0
 
+# Autenticación
+streamlit-authenticator>=0.2.1
+bcrypt>=4.0.1
+PyYAML>=6.0.1
+
 # Dependencias para producción
 gunicorn>=20.1.0
 psycopg2-binary>=2.9.5

@@ -1,38 +1,41 @@
-# Python
+# Archivos de autenticación
+.streamlit/credentials.yaml
+
+# Archivos de entorno
+.env
+*.env
+
+# Archivos de base de datos
+*.db
+*.sqlite3
+*.sqlite
+
+# Directorios de entorno virtual
+venv/
+env/
+.venv/
+
+# Archivos de Python
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-*.egg-info/
-.installed.cfg
-*.egg
 
-# Virtual Environment
-venv/
-ENV/
-
-# IDE
+# Archivos de configuración de IDEs
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# Streamlit
-.streamlit/
-
-# Operating System
+# Archivos de sistema
 .DS_Store
 Thumbs.db
+
+# Logs y archivos de desarrollo
+logs/
+*.log
+
+# Archivos temporales
+*.tmp
+*.bak
+*.swp
+*~

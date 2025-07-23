@@ -13,6 +13,180 @@ from datetime import datetime
 from sqlite3 import Error
 import streamlit as st
 from streamlit_folium import folium_static, st_folium
+from auth import initialize_authentication, check_auth, logout, update_user_profile, register_user
+import yaml
+from pathlib import Path
+
+# Configuración de la página - DEBE SER EL PRIMER COMANDO STREAMLIT
+st.set_page_config(
+    page_title="Catastro Comunal de Independencia",
+    page_icon="",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Inicializar autenticación
+authenticator = initialize_authentication()
+
+# Inicializar estados de sesión necesarios
+def initialize_session_state():
+    if 'authentication_status' not in st.session_state:
+        st.session_state.authentication_status = False
+    if 'username' not in st.session_state:
+        st.session_state.username = None
+    if 'name' not in st.session_state:
+        st.session_state.name = None
+    if 'role' not in st.session_state:
+        st.session_state.role = 'user'  # Rol por defecto
+    if 'opcion_seleccionada' not in st.session_state:
+        st.session_state.opcion_seleccionada = "🏠 Inicio"
+    # Inicializar estados de los formularios
+    form_defaults = {
+        'rut_input': "",
+        'propietario_input': "",
+        'num_contacto_input': "",
+        'direccion_input': "",
+        'rol_input': "",
+        'coordenadas_input': "",
+        'map_center': [-33.4172, -70.6506],
+        'marker_position': None,
+        'show_login_form': False
+    }
+    for key, value in form_defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+# Inicializar el estado de la sesión
+initialize_session_state()
+
+# Barra lateral para autenticación
+with st.sidebar:
+    # Si el usuario no está autenticado, mostrar formulario de inicio de sesión o registro
+    if 'authentication_status' not in st.session_state or not st.session_state['authentication_status']:
+        # Pestañas para Login y Registro
+        tab1, tab2 = st.tabs(["🔑 Iniciar Sesión", "📝 Registrarse"])
+        
+        with tab1:
+            # La autenticación ahora se maneja completamente desde auth.py
+            auth_status, auth_username = check_auth()
+            if auth_status:
+                st.rerun()
+        
+        with tab2:
+            st.write("### Registro de Nuevo Usuario")
+            
+            # Formulario de registro
+            with st.form("register_form"):
+                new_username = st.text_input("Nombre de usuario", key="reg_username")
+                new_name = st.text_input("Nombre completo", key="reg_name")
+                new_email = st.text_input("Correo electrónico", key="reg_email")
+                new_password = st.text_input("Contraseña", type="password", key="reg_password")
+                confirm_password = st.text_input("Confirmar contraseña", type="password", key="reg_confirm_password")
+                
+                submitted = st.form_submit_button("Registrarse")
+                
+                if submitted:
+                    # Validaciones
+                    if not all([new_username, new_name, new_email, new_password, confirm_password]):
+                        st.error("Todos los campos son obligatorios")
+                    elif new_password != confirm_password:
+                        st.error("Las contraseñas no coinciden")
+                    else:
+                        # Registrar el nuevo usuario
+                        success, message = register_user(
+                            username=new_username,
+                            password=new_password,
+                            name=new_name,
+                            email=new_email,
+                            role='user'  # Por defecto, los nuevos usuarios tienen rol 'user'
+                        )
+                        
+                        if success:
+                            st.success("¡Registro exitoso! Por favor inicie sesión.")
+                            # Cambiar a la pestaña de login
+                            st.markdown(
+                                "<script>"
+                                "const tabs = window.parent.document.querySelectorAll('button[role=tab]');"
+                                "tabs[0].click();"  # Hacer clic en la primera pestaña (Login)
+                                "</script>",
+                                unsafe_allow_html=True
+                            )
+                        else:
+                            st.error(f"Error al registrar el usuario: {message}")
+    
+    # Si el usuario está autenticado, mostrar información del perfil y opción de cierre de sesión
+    else:
+        st.title("🔐 Inicio de Sesión")
+        
+        # Verificar si el usuario ya está autenticado
+        if st.session_state.get('authentication_status'):
+            st.success(f"Bienvenido, {st.session_state.name}!")
+            if st.session_state.role == 'admin':
+                st.info("Rol: Administrador")
+            
+            # Botón de cierre de sesión
+            if st.button("Cerrar Sesión"):
+                logout()
+                st.session_state.authentication_status = False
+                st.session_state.username = None
+                st.session_state.name = None
+                st.session_state.role = None
+                st.rerun()
+        else:
+            # Solo mostrar el botón de inicio de sesión, no el formulario completo
+            if not st.session_state.get('show_login_form'):
+                if st.button("Iniciar Sesión"):
+                    st.session_state.show_login_form = True
+                    st.rerun()
+            else:
+                # Mostrar formulario de inicio de sesión
+                with st.form("login_form"):
+                    st.markdown("### Iniciar Sesión")
+                    username = st.text_input("Usuario")
+                    password = st.text_input("Contraseña", type="password")
+                    
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        if st.form_submit_button("Ingresar"):
+                            # Verificar credenciales
+                            if username == "admin" and password == "admin123":
+                                st.session_state.authentication_status = True
+                                st.session_state.username = username
+                                st.session_state.name = "Administrador"
+                                st.session_state.role = "admin"
+                                st.session_state.show_login_form = False
+                                st.rerun()
+                            else:
+                                st.error("Credenciales incorrectas. Intente nuevamente.")
+                    with col2:
+                        if st.form_submit_button("Cancelar"):
+                            st.session_state.show_login_form = False
+                            st.rerun()
+
+# Mostrar mensaje de inicio de sesión si el usuario no está autenticado
+if not st.session_state.get('authentication_status'):
+    st.title("🔐 Inicio de Sesión Requerido")
+    st.markdown("---")
+    
+    # Mostrar mensaje de bienvenida
+    st.markdown("""
+    <div style='text-align: center; margin: 2rem 0;'>
+        <h2>Bienvenido al Sistema de Catastro de Propiedades</h2>
+        <p>Por favor, utilice el menú lateral para iniciar sesión</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.stop()  # Detener la ejecución para mostrar solo el mensaje
+
+# Si llegamos aquí, el usuario está autenticado
+st.title("Bienvenido al Sistema de Catastro")
+st.markdown(f"""
+    <div style='background-color:#f0f2f6; padding:15px; border-radius:5px; margin-bottom:20px;'>
+        <h3>Información de Sesión</h3>
+        <p><strong>Usuario:</strong> {st.session_state.name} ({st.session_state.username})</p>
+        <p><strong>Rol:</strong> {st.session_state.role.capitalize()}</p>
+    </div>
+""", unsafe_allow_html=True)
 
 # Configuración para Heroku
 if 'DYNO' in os.environ:
@@ -94,301 +268,6 @@ def init_db():
             ''')
             
             # Índices para búsquedas frecuentes
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_propiedades_rut ON propiedades(rut)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_propiedades_rol ON propiedades(rol_propiedad)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_fotos_propiedad ON fotos(propiedad_id)')
-            
-            conn.commit()
-            return True
-            
-        except Error as e:
-            st.error(f"Error al inicializar la base de datos: {e}")
-            return False
-        finally:
-            conn.close()
-    return False
-# ===== FIN DE CÓDIGO DE DB_UTILS.PY =====
-
-# Inicializar la base de datos al inicio
-if not init_db():
-    st.error("No se pudo inicializar la base de datos. Por favor, verifica los permisos del directorio.")
-    st.stop()
-
-# Inicializar la base de datos al inicio
-if not init_db():
-    st.error("No se pudo inicializar la base de datos. Por favor, verifica los permisos del directorio.")
-    st.stop()
-
-# Inicializar estado de la sesión
-if 'opcion_seleccionada' not in st.session_state:
-    st.session_state.opcion_seleccionada = "🏠 Inicio"
-    # Inicializar estados de los inputs
-    st.session_state['rut_input'] = ""
-    st.session_state['propietario_input'] = ""
-    st.session_state['num_contacto_input'] = ""
-    st.session_state['direccion_input'] = ""
-    st.session_state['rol_input'] = ""
-    st.session_state['coordenadas_input'] = ""
-    st.session_state['map_center'] = [-33.4172, -70.6506]
-    st.session_state['marker_position'] = None
-
-# Configuración de la página
-st.set_page_config(
-    page_title="Catastro Comunal de Independencia",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Estilos CSS unificados
-st.markdown("""
-    <style>
-        /* Estilos generales */
-        .main .block-container {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-        }
-        
-        /* Títulos y encabezados */
-        h1, h2, h3, h4, h5, h6 {
-            color: #1e3d59;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin-bottom: 1rem;
-        }
-        
-        h1 {
-            font-size: 2.25rem;
-            font-weight: 700;
-            border-bottom: 2px solid #f0f2f6;
-            padding-bottom: 0.5rem;
-        }
-        
-        h2 {
-            font-size: 1.75rem;
-            font-weight: 600;
-            margin-top: 1.5rem;
-        }
-        
-        h3 {
-            font-size: 1.5rem;
-            font-weight: 500;
-            color: #2c5282;
-        }
-        
-        /* Subtítulos */
-        .subheader {
-            color: #4a5568;
-            font-size: 1.1rem;
-            margin-bottom: 1.5rem;
-            line-height: 1.5;
-        }
-        
-        /* Tarjetas y contenedores */
-        .card {
-            background-color: #ffffff;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        /* Botones */
-        .stButton > button {
-            border-radius: 8px;
-            font-weight: 500;
-            padding: 0.5rem 1.25rem;
-            transition: all 0.2s ease;
-        }
-        
-        .stButton > button:focus {
-            box-shadow: 0 0 0 0.2rem rgba(30, 136, 229, 0.3);
-        }
-        
-        .stButton > button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-        }
-        
-        /* Formularios y campos de entrada */
-        .stTextInput > div > div > input,
-        .stTextArea > div > div > textarea,
-        .stNumberInput > div > input[type="number"],
-        .stSelectbox > div > div > div {
-            border-radius: 6px;
-            border: 1px solid #e2e8f0;
-            padding: 0.5rem 0.75rem;
-        }
-        
-        .stTextInput > label,
-        .stTextArea > label,
-        .stNumberInput > label,
-        .stSelectbox > label,
-        .stDateInput > label,
-        .stFileUploader > label {
-            font-weight: 500;
-            color: #2d3748;
-            margin-bottom: 0.25rem;
-        }
-        
-        /* Pestañas */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 8px;
-            margin-bottom: 1.5rem;
-        }
-        
-        .stTabs [data-baseweb="tab"] {
-            padding: 0.5rem 1.25rem;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-        }
-        
-        .stTabs [aria-selected="true"] {
-            background-color: #1e88e5;
-            color: white !important;
-        }
-        
-        /* Mensajes de estado */
-        .stAlert {
-            border-radius: 8px;
-        }
-        
-        .stAlert [data-testid="stMarkdownContainer"] {
-            font-size: 0.95rem;
-        }
-        
-        /* Barra lateral */
-        [data-testid="stSidebar"] {
-            background-color: #f8fafc;
-            padding: 1.5rem 1rem;
-        }
-        
-        [data-testid="stSidebarNav"] {
-            margin-top: 2rem;
-        }
-        
-        /* Galería de fotos */
-        .gallery {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 1rem;
-            margin: 1.5rem 0;
-        }
-        
-        .gallery-item {
-            position: relative;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        
-        .gallery-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0,0.15);
-        }
-        
-        /* Modal de imagen */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.9);
-            justify-content: center;
-            align-items: center;
-        }
-        
-        .modal-content {
-            max-width: 90%;
-            max-height: 90%;
-            margin: auto;
-            display: block;
-        }
-        
-        .close {
-            position: absolute;
-            top: 20px;
-            right: 30px;
-            color: #fff;
-            font-size: 2rem;
-            font-weight: bold;
-            cursor: pointer;
-            transition: color 0.2s ease;
-        }
-        
-        .close:hover {
-            color: #ff6b6b;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# Configuración de la base de datos
-DB_PATH = 'catastro_propiedades.db'
-UPLOAD_FOLDER = 'uploads'
-
-# Crear directorios necesarios
-Path(UPLOAD_FOLDER).mkdir(exist_ok=True)
-
-def get_db_connection():
-    """Crea una conexión a la base de datos SQLite"""
-    conn = None
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        # Habilitar claves foráneas
-        conn.execute("PRAGMA foreign_keys = ON")
-        return conn
-    except Error as e:
-        st.error(f"Error al conectar a la base de datos: {e}")
-        return None
-
-def init_db():
-    """Inicializa la base de datos con las tablas necesarias"""
-    conn = get_db_connection()
-    if conn is not None:
-        try:
-            cursor = conn.cursor()
-            
-            # Tabla de propiedades
-            cursor.execute('''
-            CREATE TABLE IF NOT EXISTS propiedades (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                rut TEXT NOT NULL,
-                propietario TEXT NOT NULL,
-                direccion TEXT NOT NULL,
-                rol_propiedad TEXT NOT NULL,
-                avaluo_total REAL NOT NULL,
-                destino_sii TEXT,
-                destino_dom TEXT,
-                patente_comercial TEXT,
-                num_contacto TEXT,
-                coordenadas TEXT,
-                fiscalizacion_dom TEXT,
-                m2_terreno REAL,
-                m2_construidos REAL,
-                linea_construccion TEXT,
-                ano_construccion INTEGER,
-                expediente_dom TEXT,
-                observaciones TEXT,
-                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(rut, rol_propiedad)
-            )
-            ''')
-            
-            # Tabla de fotos
-            cursor.execute('''
-            CREATE TABLE IF NOT EXISTS fotos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                propiedad_id INTEGER,
-                ruta_archivo TEXT NOT NULL,
-                fecha_subida TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (propiedad_id) REFERENCES propiedades (id) ON DELETE CASCADE
-            )
-            ''')
-            
-            # Crear índices para búsquedas frecuentes
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_propiedades_rut ON propiedades(rut)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_propiedades_rol ON propiedades(rol_propiedad)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_fotos_propiedad ON fotos(propiedad_id)')
@@ -688,6 +567,70 @@ with st.sidebar:
             <div style='height: 3px; background: linear-gradient(90deg, #1e88e5, #64b5f6); margin: 0 auto 1.5rem; width: 50%; border-radius: 3px;'></div>
         </div>
     """, unsafe_allow_html=True)
+    
+    # Mostrar información del usuario y opciones de perfil
+    if st.session_state.get('username'):
+        with st.expander("👤 Perfil de Usuario", expanded=False):
+            st.markdown(f"""
+                <div style='text-align: center; margin-bottom: 1rem;'>
+                    <p style='margin-bottom: 0.5rem;'>👤 <strong>{st.session_state.get('name', st.session_state.username)}</strong></p>
+                    <p style='color: #666; font-size: 0.9em;'>Rol: {st.session_state.get('role', 'Usuario')}</p>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            # Formulario de actualización de perfil
+            with st.form("update_profile_form"):
+                st.markdown("### Actualizar Perfil")
+                new_username = st.text_input("Nuevo nombre de usuario", value=st.session_state.username)
+                new_name = st.text_input("Nombre completo", value=st.session_state.get('name', ''))
+                new_email = st.text_input("Correo electrónico", value=st.session_state.get('email', ''))
+                new_password = st.text_input("Nueva contraseña", type="password", placeholder="Dejar en blanco para no cambiar")
+                
+                # Solo permitir cambiar el rol a administradores
+                if st.session_state.get('role') == 'admin':
+                    new_role = st.selectbox(
+                        "Rol",
+                        ["admin", "user"],
+                        index=0 if st.session_state.get('role') == 'admin' else 1
+                    )
+                else:
+                    new_role = st.session_state.get('role', 'user')
+                
+                if st.form_submit_button("Actualizar Perfil"):
+                    # Validar que al menos un campo fue modificado
+                    if (new_username == st.session_state.username and 
+                        not new_password and 
+                        new_role == st.session_state.get('role')):
+                        st.warning("No se realizaron cambios en el perfil.")
+                    else:
+                        # Llamar a la función de actualización de perfil
+                        success, message = update_user_profile(
+                            current_username=st.session_state.username,
+                            new_username=new_username if new_username != st.session_state.username else None,
+                            new_password=new_password if new_password else None,
+                            new_role=new_role if new_role != st.session_state.get('role') else None,
+                            new_name=new_name if new_name != st.session_state.get('name') else None,
+                            new_email=new_email if new_email != st.session_state.get('email') else None
+                        )
+                        
+                        if success:
+                            # Actualizar la sesión con los nuevos valores
+                            if new_username and new_username != st.session_state.username:
+                                st.session_state.username = new_username
+                            if new_role and new_role != st.session_state.get('role'):
+                                st.session_state.role = new_role
+                            if new_name and new_name != st.session_state.get('name'):
+                                st.session_state.name = new_name
+                            if new_email and new_email != st.session_state.get('email'):
+                                st.session_state.email = new_email
+                            
+                            st.success("Perfil actualizado correctamente. Por favor, inicie sesión nuevamente.")
+                            # Cerrar sesión para aplicar los cambios
+                            logout()
+                        else:
+                            st.error(f"Error al actualizar el perfil: {message}")
+    
+    st.markdown("---")
     
     # Opciones del menú con sus respectivos íconos
     opciones = [
@@ -1691,7 +1634,7 @@ if opcion == "Agregar Propiedad":
 
 elif opcion == "Ver/Editar Propiedades":
     st.markdown("""
-        <div class='card' style='margin-bottom: 2rem;'>
+        <div class='card'>
             <div style='display: flex; align-items: center;'>
                 <span style='font-size: 2rem; margin-right: 0.75rem;'>📋</span>
                 <div>

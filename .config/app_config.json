@@ -1,0 +1,11 @@
+{
+    "tema": "claro",
+    "ultima_vista": "Inicio",
+    "items_por_pagina": 10,
+    "mostrar_tutorial": true,
+    "configuracion_mapa": {
+        "zoom_inicial": 14,
+        "tipo_mapa": "OpenStreetMap",
+        "mostrar_marcadores": true
+    }
+}
